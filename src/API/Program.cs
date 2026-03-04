@@ -1,4 +1,5 @@
 using API.Auth;
+using API.Reports;
 using FastEndpoints;
 using FastEndpoints.Swagger;
 using Infrastructure;
@@ -13,7 +14,9 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<ReportApprovalOptions>(builder.Configuration.GetSection(ReportApprovalOptions.SectionName));
 builder.Services.AddSingleton<AuthSessionStore>();
+builder.Services.AddSingleton<ReportStore>();
 builder.Services.AddScoped<JwtTokenService>();
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
