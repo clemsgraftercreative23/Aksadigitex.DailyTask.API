@@ -7,8 +7,10 @@
 <ItemGroup>
 <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
 <ProjectReference Include="..\Domain\Domain.csproj" />
+<PackageReference Include="FastEndpoints" Version="5.33.0" />
+<PackageReference Include="FastEndpoints.Swagger" Version="5.33.0" />
 <PackageReference Include="Isopoh.Cryptography.Argon2" Version="2.0.0" />
-<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
 <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
 </ItemGroup>
 </Project>
