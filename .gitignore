@@ -1,0 +1,118 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options directory
+.vs/
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Rider
+.idea/
+*.sln.iml
+*.swp
+*.swo
+*~
+
+# Visual Studio user-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local History for Visual Studio
+.localhistory/
+
+# BeatPulse healthcheck temp database
+healthchecksdb
+
+# Backup & swap files
+*.bak
+*.tmp
+*.swp
+*~
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# NuGet Installer files
+.nuget/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+
+# nuget.exe only
+!.nuget/nuget.exe
+
+# The packages folder can be ignored because of Package Restore
+packages/
+!packages/build/
+*.packages/
+
+# lock files (optional - uncomment if you use lock files)
+# packages.lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# dotnet user-secrets
+secrets.json
+secrets.*.json
+
+# User-specific files
+launchSettings.local.json
+appsettings.local.json
+appsettings.development.local.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.mdf
+*.ldf
+
+# IDE cache directories
+.sonarlint/
+.vs/
+.vscode/
+
+# OS Specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Node modules (if using any frontend tooling)
+node_modules/
+npm-debug.log
+
+# Build output
+dist/
