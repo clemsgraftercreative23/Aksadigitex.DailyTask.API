@@ -35,7 +35,7 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
         page = page <= 0 ? 1 : page;
         pageSize = pageSize <= 0 ? 10 : Math.Min(pageSize, 100);
 
-        var (items, totalCount) = _store.List(page, pageSize);
+        var (items, totalCount) = await _store.ListAsync(page, pageSize);
 
         await SendAsync(new ListReportsResponse
         {

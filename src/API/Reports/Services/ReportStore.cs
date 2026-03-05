@@ -1,143 +1,131 @@
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using Domain;
+using Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 namespace API.Reports;
 
 public class ReportStore
 {
-    private readonly object _sync = new();
-    private int _nextReportId = 1;
-    private int _nextAttachmentId = 1;
-    private readonly List<ReportRecord> _items = new();
+    private readonly AppDbContext _context;
 
-    public ReportRecord Create(DateOnly reportDate, string title, string content, string createdByEmail)
+    public ReportStore(AppDbContext context)
     {
-        lock (_sync)
-        {
-            var record = new ReportRecord
-            {
-                Id = _nextReportId++,
-                ReportDate = reportDate,
-                Title = title,
-                Content = content,
-                CreatedByEmail = createdByEmail,
-                CreatedAtUtc = DateTime.UtcNow,
-                Status = ReportStatus.Pending
-            };
-
-            _items.Add(record);
-            return record;
-        }
+        _context = context;
     }
 
-    public (IReadOnlyList<ReportRecord> Items, int TotalCount) List(int page, int pageSize)
+    public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result)
     {
-        lock (_sync)
+        var report = new DailyReport
         {
-            var ordered = _items
-                .OrderByDescending(x => x.Id)
-                .ToList();
+            UserId = userId,
+            ReportDate = reportDate,
+            ReportTime = reportTime,
+            TaskDescription = taskDescription,
+            Issue = issue,
+            Solution = solution,
+            Result = result,
+            CreatedAt = DateTime.UtcNow
+        };
 
-            var totalCount = ordered.Count;
-            var pageItems = ordered
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            return (pageItems, totalCount);
-        }
+        _context.DailyReports.Add(report);
+        await _context.SaveChangesAsync();
+        return report;
     }
 
-    public ReportRecord GetById(int id)
+    public async Task<DailyReport?> GetByIdAsync(int id)
     {
-        lock (_sync)
-        {
-            return _items.FirstOrDefault(x => x.Id == id);
-        }
+        return await _context.DailyReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == id);
     }
 
-    public ReportRecord Approve(int id, string note, ReportUserResponse approver)
+    public async Task<(List<DailyReport> Items, int TotalCount)> ListAsync(int page, int pageSize)
     {
-        lock (_sync)
-        {
-            var item = _items.FirstOrDefault(x => x.Id == id);
-            if (item is null)
-                return null;
+        var query = _context.DailyReports
+            .Include(r => r.Attachments)
+            .OrderByDescending(x => x.Id);
 
-            item.Status = ReportStatus.Approved;
-            item.ApprovalNote = note;
-            item.RejectReason = string.Empty;
-            item.DecisionAtUtc = DateTime.UtcNow;
-            item.DecidedBy = approver;
-            return item;
-        }
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
     }
 
-    public ReportRecord Reject(int id, string reason, ReportUserResponse approver)
+    public async Task<DailyReport?> ApproveAsync(int id, string note)
     {
-        lock (_sync)
-        {
-            var item = _items.FirstOrDefault(x => x.Id == id);
-            if (item is null)
-                return null;
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
+        if (report is null)
+            return null;
 
-            item.Status = ReportStatus.Rejected;
-            item.ApprovalNote = string.Empty;
-            item.RejectReason = reason;
-            item.DecisionAtUtc = DateTime.UtcNow;
-            item.DecidedBy = approver;
-            return item;
-        }
+        report.Status = "approved";
+        report.ManagerNote = note;
+        _context.DailyReports.Update(report);
+        await _context.SaveChangesAsync();
+        return report;
     }
 
-    public ReportRecord AddAttachment(int reportId, string fileName, string contentType, long fileSize)
+    public async Task<DailyReport?> RejectAsync(int id, string reason)
     {
-        lock (_sync)
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
+        if (report is null)
+            return null;
+
+        report.Status = "rejected";
+        report.ManagerNote = reason;
+        _context.DailyReports.Update(report);
+        await _context.SaveChangesAsync();
+        return report;
+    }
+
+    public async Task<DailyReportAttachment?> AddAttachmentAsync(int reportId, string attachmentPath, string fileType)
+    {
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == reportId);
+        if (report is null)
+            return null;
+
+        var attachment = new DailyReportAttachment
         {
-            var item = _items.FirstOrDefault(x => x.Id == reportId);
-            if (item is null)
-                return null;
+            ReportId = reportId,
+            AttachmentPath = attachmentPath,
+            FileType = fileType,
+            CreatedAt = DateTime.UtcNow
+        };
 
-            item.Attachments.Add(new ReportAttachmentRecord
-            {
-                Id = _nextAttachmentId++,
-                FileName = fileName,
-                ContentType = contentType,
-                FileSize = fileSize,
-                UploadedAtUtc = DateTime.UtcNow
-            });
-
-            return item;
-        }
+        _context.DailyReportAttachments.Add(attachment);
+        await _context.SaveChangesAsync();
+        return attachment;
     }
 }
 
 public static class ReportMappingExtensions
 {
-    public static ReportItemResponse ToResponse(this ReportRecord record)
+    public static ReportItemResponse ToResponse(this DailyReport report)
     {
         return new ReportItemResponse
         {
-            Id = record.Id,
-            ReportDate = record.ReportDate,
-            Title = record.Title,
-            Content = record.Content,
-            Status = record.Status,
-            CreatedByEmail = record.CreatedByEmail,
-            CreatedAtUtc = record.CreatedAtUtc,
-            ApprovalNote = record.ApprovalNote,
-            RejectReason = record.RejectReason,
-            DecisionAtUtc = record.DecisionAtUtc,
-            DecidedBy = record.DecidedBy,
-            Attachments = record.Attachments
+            Id = report.Id,
+            UserId = report.UserId,
+            ReportDate = report.ReportDate,
+            ReportTime = report.ReportTime,
+            TaskDescription = report.TaskDescription,
+            Issue = report.Issue,
+            Solution = report.Solution,
+            Result = report.Result,
+            Status = report.Status,
+            ManagerNote = report.ManagerNote,
+            CreatedAt = report.CreatedAt,
+            Attachments = report.Attachments
                 .Select(a => new ReportAttachmentResponse
                 {
                     Id = a.Id,
-                    FileName = a.FileName,
-                    ContentType = a.ContentType,
-                    FileSize = a.FileSize,
-                    UploadedAtUtc = a.UploadedAtUtc
+                    AttachmentPath = a.AttachmentPath,
+                    FileType = a.FileType,
+                    CreatedAt = a.CreatedAt
                 })
                 .ToList()
         };
@@ -190,29 +178,4 @@ public static class ReportMappingExtensions
             MfaEnabled = user.MfaEnabled
         };
     }
-}
-
-public class ReportRecord
-{
-    public int Id { get; set; }
-    public DateOnly ReportDate { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-    public ReportStatus Status { get; set; }
-    public string CreatedByEmail { get; set; } = string.Empty;
-    public DateTime CreatedAtUtc { get; set; }
-    public string ApprovalNote { get; set; } = string.Empty;
-    public string RejectReason { get; set; } = string.Empty;
-    public DateTime? DecisionAtUtc { get; set; }
-    public ReportUserResponse DecidedBy { get; set; }
-    public List<ReportAttachmentRecord> Attachments { get; set; } = new();
-}
-
-public class ReportAttachmentRecord
-{
-    public int Id { get; set; }
-    public string FileName { get; set; } = string.Empty;
-    public string ContentType { get; set; } = string.Empty;
-    public long FileSize { get; set; }
-    public DateTime UploadedAtUtc { get; set; }
 }

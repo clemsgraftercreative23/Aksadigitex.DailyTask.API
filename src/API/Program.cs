@@ -1,4 +1,5 @@
 using API.Auth;
+using API.Common;
 using API.Reports;
 using FastEndpoints;
 using FastEndpoints.Swagger;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +18,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<ReportApprovalOptions>(builder.Configuration.GetSection(ReportApprovalOptions.SectionName));
 builder.Services.AddSingleton<AuthSessionStore>();
-builder.Services.AddSingleton<ReportStore>();
+builder.Services.AddScoped<ReportStore>();
 builder.Services.AddScoped<JwtTokenService>();
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
@@ -40,6 +42,12 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+});
 
 builder.Services.AddFastEndpoints();
 builder.Services.SwaggerDocument(opt =>
