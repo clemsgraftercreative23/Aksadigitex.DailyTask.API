@@ -26,19 +26,34 @@ public class CreateReportEndpoint : Endpoint<CreateReportRequest, CreateReportRe
 
     public override async Task HandleAsync(CreateReportRequest req, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.Title) || string.IsNullOrWhiteSpace(req.Content))
+        if (string.IsNullOrWhiteSpace(req.TaskDescription) || string.IsNullOrWhiteSpace(req.Issue))
         {
-            AddError("Title and content are required.");
+            AddError("TaskDescription and Issue are required.");
             await SendErrorsAsync(cancellation: ct);
             return;
         }
 
-        var email = User.GetEmail();
-        var item = _store.Create(req.ReportDate, req.Title.Trim(), req.Content.Trim(), email);
+        var userId = User.GetUserId();
+        if (!userId.HasValue)
+        {
+            AddError("User ID not found in token.");
+            await SendErrorsAsync(cancellation: ct);
+            return;
+        }
+
+        var report = await _store.CreateAsync(
+            userId.Value,
+            req.ReportDate,
+            req.ReportTime,
+            req.TaskDescription.Trim(),
+            req.Issue.Trim(),
+            req.Solution.Trim(),
+            req.Result.Trim()
+        );
 
         await SendAsync(new CreateReportResponse
         {
-            Item = item.ToResponse()
+            Item = report!.ToResponse()
         }, cancellation: ct);
     }
 }

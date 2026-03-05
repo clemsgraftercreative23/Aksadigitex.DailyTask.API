@@ -1,7 +1,5 @@
 using FastEndpoints;
-using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace API.Reports;
@@ -9,13 +7,11 @@ namespace API.Reports;
 public class ApproveReportEndpoint : Endpoint<ApproveReportRequest, UpdateReportStatusResponse>
 {
     private readonly ReportStore _store;
-    private readonly AppDbContext _db;
     private readonly ReportApprovalOptions _options;
 
-    public ApproveReportEndpoint(ReportStore store, AppDbContext db, IOptions<ReportApprovalOptions> options)
+    public ApproveReportEndpoint(ReportStore store, IOptions<ReportApprovalOptions> options)
     {
         _store = store;
-        _db = db;
         _options = options.Value;
     }
 
@@ -39,42 +35,19 @@ public class ApproveReportEndpoint : Endpoint<ApproveReportRequest, UpdateReport
             return;
         }
 
-        var report = _store.GetById(Route<int>("id"));
+        var reportId = Route<int>("id");
+        var report = await _store.GetByIdAsync(reportId);
         if (report is null)
         {
             await SendNotFoundAsync(ct);
             return;
         }
 
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (currentUser is null)
-        {
-            await SendUnauthorizedAsync(ct);
-            return;
-        }
-
-        var updated = _store.Approve(report.Id, req.Note?.Trim() ?? string.Empty, currentUser.ToReportUser());
+        var updated = await _store.ApproveAsync(reportId, req.Note?.Trim() ?? string.Empty);
 
         await SendAsync(new UpdateReportStatusResponse
         {
             Item = updated!.ToResponse()
         }, cancellation: ct);
-    }
-
-    private async Task<Domain.User> GetCurrentUserAsync(CancellationToken ct)
-    {
-        var userId = User.GetUserId();
-        if (userId.HasValue)
-        {
-            return await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId.Value, ct);
-        }
-
-        var email = User.GetEmail();
-        if (!string.IsNullOrWhiteSpace(email))
-        {
-            return await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email == email, ct);
-        }
-
-        return null;
     }
 }

@@ -6,10 +6,12 @@ namespace API.Reports;
 public class UploadAttachmentEndpoint : Endpoint<UploadAttachmentRequest, UploadAttachmentResponse>
 {
     private readonly ReportStore _store;
+    private readonly IWebHostEnvironment _environment;
 
-    public UploadAttachmentEndpoint(ReportStore store)
+    public UploadAttachmentEndpoint(ReportStore store, IWebHostEnvironment environment)
     {
         _store = store;
+        _environment = environment;
     }
 
     public override void Configure()
@@ -21,13 +23,15 @@ public class UploadAttachmentEndpoint : Endpoint<UploadAttachmentRequest, Upload
         Summary(s =>
         {
             s.Summary = "Upload attachment";
-            s.Description = "Uploads an attachment metadata for a report.";
+            s.Description = "Uploads an attachment for a report.";
         });
     }
 
     public override async Task HandleAsync(UploadAttachmentRequest req, CancellationToken ct)
     {
-        var report = _store.GetById(Route<int>("id"));
+        var reportId = Route<int>("id");
+        var report = await _store.GetByIdAsync(reportId);
+        
         if (report is null)
         {
             await SendNotFoundAsync(ct);
@@ -41,15 +45,48 @@ public class UploadAttachmentEndpoint : Endpoint<UploadAttachmentRequest, Upload
             return;
         }
 
-        var updated = _store.AddAttachment(
-            report.Id,
-            req.File.FileName,
-            req.File.ContentType,
-            req.File.Length);
-
-        await SendAsync(new UploadAttachmentResponse
+        try
         {
-            Item = updated!.ToResponse()
-        }, cancellation: ct);
+            // Create uploads directory if not exists
+            var uploadsDir = Path.Combine(_environment.ContentRootPath, "uploads", "reports", reportId.ToString());
+            Directory.CreateDirectory(uploadsDir);
+
+            // Generate unique filename
+            var fileName = $"{Guid.NewGuid()}_{req.File.FileName}";
+            var filePath = Path.Combine(uploadsDir, fileName);
+
+            // Save file to disk
+            await using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await req.File.CopyToAsync(stream, ct);
+            }
+
+            // Save attachment to database
+            var relativePath = $"/uploads/reports/{reportId}/{fileName}";
+            var attachment = await _store.AddAttachmentAsync(
+                reportId,
+                relativePath,
+                req.File.ContentType
+            );
+
+            if (attachment is null)
+            {
+                AddError("Failed to save attachment to database.");
+                await SendErrorsAsync(cancellation: ct);
+                return;
+            }
+
+            // Return updated report with all attachments
+            var updatedReport = await _store.GetByIdAsync(reportId);
+            await SendAsync(new UploadAttachmentResponse
+            {
+                Item = updatedReport!.ToResponse()
+            }, cancellation: ct);
+        }
+        catch (Exception ex)
+        {
+            AddError($"Failed to upload attachment: {ex.Message}");
+            await SendErrorsAsync(cancellation: ct);
+        }
     }
 }

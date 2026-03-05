@@ -2,24 +2,14 @@ using Microsoft.AspNetCore.Http;
 
 namespace API.Reports;
 
-public enum ReportStatus
-{
-    Pending,
-    Approved,
-    Rejected
-}
-
 public class CreateReportRequest
 {
     public DateOnly ReportDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
-    public string Title { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-}
-
-public class ListReportsRequest
-{
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 10;
+    public TimeOnly ReportTime { get; set; } = TimeOnly.FromDateTime(DateTime.UtcNow);
+    public string TaskDescription { get; set; } = string.Empty;
+    public string Issue { get; set; } = string.Empty;
+    public string Solution { get; set; } = string.Empty;
+    public string Result { get; set; } = string.Empty;
 }
 
 public class ApproveReportRequest
@@ -49,25 +39,24 @@ public class ReportUserResponse
 public class ReportAttachmentResponse
 {
     public int Id { get; set; }
-    public string FileName { get; set; } = string.Empty;
-    public string ContentType { get; set; } = string.Empty;
-    public long FileSize { get; set; }
-    public DateTime UploadedAtUtc { get; set; }
+    public string AttachmentPath { get; set; } = string.Empty;
+    public string FileType { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
 }
 
 public class ReportItemResponse
 {
     public int Id { get; set; }
+    public int UserId { get; set; }
     public DateOnly ReportDate { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-    public ReportStatus Status { get; set; }
-    public string CreatedByEmail { get; set; } = string.Empty;
-    public DateTime CreatedAtUtc { get; set; }
-    public string ApprovalNote { get; set; } = string.Empty;
-    public string RejectReason { get; set; } = string.Empty;
-    public DateTime? DecisionAtUtc { get; set; }
-    public ReportUserResponse DecidedBy { get; set; } = new();
+    public TimeOnly ReportTime { get; set; }
+    public string TaskDescription { get; set; } = string.Empty;
+    public string Issue { get; set; } = string.Empty;
+    public string Solution { get; set; } = string.Empty;
+    public string Result { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? ManagerNote { get; set; }
+    public DateTime CreatedAt { get; set; }
     public IReadOnlyList<ReportAttachmentResponse> Attachments { get; set; } = Array.Empty<ReportAttachmentResponse>();
 }
 
