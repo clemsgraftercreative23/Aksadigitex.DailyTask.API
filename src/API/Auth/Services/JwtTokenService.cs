@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Domain;
 
 namespace API.Auth;
 
@@ -15,7 +16,7 @@ public class JwtTokenService
         _jwtOptions = jwtOptions.Value;
     }
 
-    public (string AccessToken, DateTime ExpiresAtUtc) CreateAccessToken(int userId, string email)
+    public (string AccessToken, DateTime ExpiresAtUtc) CreateAccessToken(int userId, string email, UserRole role = UserRole.User)
     {
         var now = DateTime.UtcNow;
         var expiresAt = now.AddMinutes(_jwtOptions.AccessTokenMinutes);
@@ -24,6 +25,7 @@ public class JwtTokenService
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, email),
+            new Claim(ClaimTypes.Role, role.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
 

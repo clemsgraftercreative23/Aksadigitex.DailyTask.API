@@ -34,9 +34,17 @@ public class ListUsersEndpoint : EndpointWithoutRequest<ListUsersResponse>
             .Select(x => new UserItemResponse
             {
                 Id = x.Id,
+                FullName = x.FullName,
                 Email = x.Email,
+                RoleId = x.RoleId,
+                RoleName = x.RoleRef != null ? x.RoleRef.RoleName : x.RoleId.ToString(),
+                Position = x.Position,
+                CompanyId = x.CompanyId,
+                DepartmentId = x.DepartmentId,
                 IsActive = x.IsActive,
-                MfaEnabled = x.MfaEnabled
+                CreatedAt = x.CreatedAt,
+                MfaEnabled = x.MfaEnabled,
+                HighValueThreshold = x.HighValueThreshold
             })
             .ToListAsync(ct);
 

@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using API.Auth;
+using Domain;
 
 namespace API.Reports;
 
-public class UploadAttachmentEndpoint : Endpoint<UploadAttachmentRequest, UploadAttachmentResponse>
+public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentRequest, UploadAttachmentResponse>
 {
     private readonly ReportStore _store;
     private readonly IWebHostEnvironment _environment;
@@ -23,12 +25,20 @@ public class UploadAttachmentEndpoint : Endpoint<UploadAttachmentRequest, Upload
         Summary(s =>
         {
             s.Summary = "Upload attachment";
-            s.Description = "Uploads an attachment for a report.";
+            s.Description = "Uploads an attachment for a report. Only User role can upload.";
         });
     }
 
+    // Hanya user dengan role User yang bisa upload attachment
+    protected override UserRole[] GetAllowedRoles() =>
+        new[] { UserRole.User };
+
     public override async Task HandleAsync(UploadAttachmentRequest req, CancellationToken ct)
     {
+        // Validasi role terlebih dahulu
+        if (!await ValidateRoleAsync(ct))
+            return;
+
         var reportId = Route<int>("id");
         var report = await _store.GetByIdAsync(reportId);
         
