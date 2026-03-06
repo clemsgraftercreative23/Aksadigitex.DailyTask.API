@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using API.Auth;
+using Domain;
 
 namespace API.Reports;
 
-public class CreateReportEndpoint : Endpoint<CreateReportRequest, CreateReportResponse>
+public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, CreateReportResponse>
 {
     private readonly ReportStore _store;
 
@@ -20,12 +22,20 @@ public class CreateReportEndpoint : Endpoint<CreateReportRequest, CreateReportRe
         Summary(s =>
         {
             s.Summary = "Create daily report";
-            s.Description = "Creates a new daily report with pending status.";
+            s.Description = "Creates a new daily report with pending status. Only User role can create reports.";
         });
     }
 
+    // Hanya user dengan role User yang bisa create report
+    protected override UserRole[] GetAllowedRoles() =>
+        new[] { UserRole.User };
+
     public override async Task HandleAsync(CreateReportRequest req, CancellationToken ct)
     {
+        // Validasi role terlebih dahulu
+        if (!await ValidateRoleAsync(ct))
+            return;
+
         if (string.IsNullOrWhiteSpace(req.TaskDescription) || string.IsNullOrWhiteSpace(req.Issue))
         {
             AddError("TaskDescription and Issue are required.");
