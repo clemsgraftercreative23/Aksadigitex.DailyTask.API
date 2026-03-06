@@ -10,7 +10,10 @@ public class CreateReportRequest
     public string Issue { get; set; } = string.Empty;
     public string Solution { get; set; } = string.Empty;
     public string Result { get; set; } = string.Empty;
+    public string Status { get; set; } = "draft"; // "draft" or "submitted"
 }
+
+public class SubmitReportRequest { }
 
 public class ApproveReportRequest
 {

@@ -15,8 +15,9 @@ public class ReportStore
         _context = context;
     }
 
-    public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result)
+    public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result, string status = "draft")
     {
+        var normalizedStatus = status?.ToLowerInvariant() == "submitted" ? "submitted" : "draft";
         var report = new DailyReport
         {
             UserId = userId,
@@ -26,10 +27,21 @@ public class ReportStore
             Issue = issue,
             Solution = solution,
             Result = result,
+            Status = normalizedStatus,
             CreatedAt = DateTime.UtcNow
         };
 
         _context.DailyReports.Add(report);
+        await _context.SaveChangesAsync();
+        return report;
+    }
+
+    public async Task<DailyReport?> SubmitAsync(int id, int userId)
+    {
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+        if (report is null) return null;
+        report.Status = "submitted";
+        _context.DailyReports.Update(report);
         await _context.SaveChangesAsync();
         return report;
     }

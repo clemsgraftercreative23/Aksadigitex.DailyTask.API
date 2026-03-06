@@ -116,3 +116,22 @@ npm-debug.log
 
 # Build output
 dist/
+
+# .NET build outputs - bin & obj at any depth
+**/bin/
+**/obj/
+
+# SSL/TLS certificates (e.g. Aiven ca.pem)
+*.pem
+*.crt
+*.key
+
+# Publish profiles (optional - uncomment to ignore)
+# **/PublishProfiles/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml

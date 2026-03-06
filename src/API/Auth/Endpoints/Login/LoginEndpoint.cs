@@ -45,9 +45,17 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Email == req.Email && x.IsActive, ct);
 
-        if (user is null || !PasswordVerifier.Verify(req.Password, user.PasswordHash))
+        if (user is null)
         {
-            await SendUnauthorizedAsync(ct);
+            AddError("Email tidak terdaftar atau akun tidak aktif.");
+            await SendErrorsAsync(statusCode: 401, cancellation: ct);
+            return;
+        }
+
+        if (!PasswordVerifier.Verify(req.Password, user.PasswordHash))
+        {
+            AddError("Password salah. Silakan coba lagi.");
+            await SendErrorsAsync(statusCode: 401, cancellation: ct);
             return;
         }
 
