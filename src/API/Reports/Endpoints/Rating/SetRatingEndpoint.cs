@@ -26,9 +26,9 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
         });
     }
 
-    // Hanya user dengan role SuperAdmin yang bisa set rating
+    // SuperAdmin dan SuperDuperAdmin bisa set rating
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.SuperAdmin };
+        new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(SetRatingRequest req, CancellationToken ct)
     {

@@ -29,9 +29,9 @@ public class ApproveReportEndpoint : RoleAuthorizedEndpoint<ApproveReportRequest
         });
     }
 
-    // Hanya user dengan role SuperAdmin yang bisa approve report
+    // SuperAdmin dan SuperDuperAdmin bisa approve report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.SuperAdmin };
+        new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(ApproveReportRequest req, CancellationToken ct)
     {
