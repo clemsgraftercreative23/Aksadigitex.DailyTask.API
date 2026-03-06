@@ -71,7 +71,7 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
             return;
         }
 
-        var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email);
+        var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email, user.Role);
         var refresh = _sessionStore.CreateRefreshToken(user.Id, _jwtOptions.RefreshTokenDays);
 
         await SendAsync(new LoginResponse

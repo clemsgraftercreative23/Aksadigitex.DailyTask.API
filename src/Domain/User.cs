@@ -15,4 +15,6 @@ public class User {
     public bool IsActive {get;set;}
     [Column("mfa_enabled")]
     public bool? MfaEnabled {get;set;}
+    [Column("role")]
+    public UserRole Role {get;set;} = UserRole.User;
 }
