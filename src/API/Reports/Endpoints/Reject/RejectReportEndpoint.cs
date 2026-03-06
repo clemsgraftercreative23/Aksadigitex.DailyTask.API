@@ -29,9 +29,9 @@ public class RejectReportEndpoint : RoleAuthorizedEndpoint<RejectReportRequest, 
         });
     }
 
-    // Hanya user dengan role SuperAdmin yang bisa reject report
+    // SuperAdmin dan SuperDuperAdmin bisa reject report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.SuperAdmin };
+        new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(RejectReportRequest req, CancellationToken ct)
     {
