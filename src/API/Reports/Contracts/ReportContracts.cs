@@ -22,6 +22,11 @@ public class RejectReportRequest
     public string Reason { get; set; } = string.Empty;
 }
 
+public class SetRatingRequest
+{
+    public int Rating { get; set; } // 1-5 rating
+}
+
 public class UploadAttachmentRequest
 {
     public int Id { get; set; }
@@ -56,6 +61,7 @@ public class ReportItemResponse
     public string Result { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? ManagerNote { get; set; }
+    public int? Rating { get; set; } // 1-5 rating oleh SuperAdmin
     public DateTime CreatedAt { get; set; }
     public IReadOnlyList<ReportAttachmentResponse> Attachments { get; set; } = Array.Empty<ReportAttachmentResponse>();
 }

@@ -82,6 +82,18 @@ public class ReportStore
         return report;
     }
 
+    public async Task<DailyReport?> SetRatingAsync(int id, int rating)
+    {
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
+        if (report is null)
+            return null;
+
+        report.Rating = rating;
+        _context.DailyReports.Update(report);
+        await _context.SaveChangesAsync();
+        return report;
+    }
+
     public async Task<DailyReportAttachment?> AddAttachmentAsync(int reportId, string attachmentPath, string fileType)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == reportId);
@@ -118,6 +130,7 @@ public static class ReportMappingExtensions
             Result = report.Result,
             Status = report.Status,
             ManagerNote = report.ManagerNote,
+            Rating = report.Rating,
             CreatedAt = report.CreatedAt,
             Attachments = report.Attachments
                 .Select(a => new ReportAttachmentResponse

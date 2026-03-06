@@ -83,7 +83,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("daily_report");
+                    b.ToTable("daily_report", (string)null);
                 });
 
             modelBuilder.Entity("Domain.DailyReportAttachment", b =>
@@ -115,7 +115,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ReportId");
 
-                    b.ToTable("daily_report_attachments");
+                    b.ToTable("daily_report_attachments", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Role", b =>
@@ -133,7 +133,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("roles");
+                    b.ToTable("roles", (string)null);
                 });
 
             modelBuilder.Entity("Domain.User", b =>
@@ -197,7 +197,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("users");
+                    b.ToTable("users", (string)null);
                 });
 
             modelBuilder.Entity("Domain.DailyReport", b =>
