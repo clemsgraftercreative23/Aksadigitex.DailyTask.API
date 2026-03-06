@@ -1,10 +1,12 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
+using API.Auth;
+using Domain;
 
 namespace API.Reports;
 
-public class RejectReportEndpoint : Endpoint<RejectReportRequest, UpdateReportStatusResponse>
+public class RejectReportEndpoint : RoleAuthorizedEndpoint<RejectReportRequest, UpdateReportStatusResponse>
 {
     private readonly ReportStore _store;
     private readonly ReportApprovalOptions _options;
@@ -23,17 +25,19 @@ public class RejectReportEndpoint : Endpoint<RejectReportRequest, UpdateReportSt
         Summary(s =>
         {
             s.Summary = "Reject report";
-            s.Description = "Rejects a report. Access is restricted by configured role or email.";
+            s.Description = "Rejects a report. Access is restricted to SuperAdmin role only.";
         });
     }
 
+    // Hanya user dengan role SuperAdmin yang bisa reject report
+    protected override UserRole[] GetAllowedRoles() =>
+        new[] { UserRole.SuperAdmin };
+
     public override async Task HandleAsync(RejectReportRequest req, CancellationToken ct)
     {
-        if (!User.CanApproveOrReject(_options))
-        {
-            await SendForbiddenAsync(ct);
+        // Validasi role terlebih dahulu
+        if (!await ValidateRoleAsync(ct))
             return;
-        }
 
         var reportId = Route<int>("id");
         var report = await _store.GetByIdAsync(reportId);
