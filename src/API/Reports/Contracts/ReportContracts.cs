@@ -73,6 +73,11 @@ public class ListReportsResponse
     public IReadOnlyList<ReportItemResponse> Items { get; set; } = Array.Empty<ReportItemResponse>();
 }
 
+public class DetailReportResponse
+{
+    public ReportItemResponse Item { get; set; } = new();
+}
+
 public class UpdateReportStatusResponse
 {
     public ReportItemResponse Item { get; set; } = new();

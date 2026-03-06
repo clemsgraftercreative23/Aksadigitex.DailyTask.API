@@ -7,6 +7,7 @@ using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using NSwag.Generation.Processors.Security;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -52,10 +53,12 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddFastEndpoints();
 builder.Services.SwaggerDocument(opt =>
 {
+    opt.EnableJWTBearerAuth = true;
     opt.DocumentSettings = s =>
     {
         s.Title = "Aksadigitex DailyTask API";
         s.Version = "v1";
+        s.OperationProcessors.Add(new AspNetCoreOperationSecurityScopeProcessor("JWTBearerAuth"));
     };
 });
 
