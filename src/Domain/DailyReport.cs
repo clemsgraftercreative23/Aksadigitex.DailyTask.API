@@ -46,6 +46,9 @@ public class DailyReport
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
+    [Column("rating")]
+    public int? Rating { get; set; } // 1-5 rating oleh SuperAdmin
+
     // Foreign key
     public User? User { get; set; }
 
