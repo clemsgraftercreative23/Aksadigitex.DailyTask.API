@@ -19,7 +19,10 @@ public static class UserMappings
             IsActive = user.IsActive,
             CreatedAt = user.CreatedAt,
             MfaEnabled = user.MfaEnabled,
-            HighValueThreshold = user.HighValueThreshold
+            NotifThresholdMin = user.NotifThresholdMin,
+            NotifThresholdMax = user.NotifThresholdMax,
+            UrgencyEmail = user.UrgencyEmail,
+            EnableUrgensi = user.EnableUrgensi
         };
     }
 }

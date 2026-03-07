@@ -75,7 +75,10 @@ public class AdminUpdateUserEndpoint : RoleAuthorizedEndpoint<UpdateUserRequest,
         user.CompanyId = req.CompanyId;
         user.DepartmentId = req.DepartmentId;
         user.MfaEnabled = req.MfaEnabled;
-        user.HighValueThreshold = req.HighValueThreshold;
+        if (req.NotifThresholdMin.HasValue) user.NotifThresholdMin = req.NotifThresholdMin.Value;
+        if (req.NotifThresholdMax.HasValue) user.NotifThresholdMax = req.NotifThresholdMax.Value;
+        if (req.UrgencyEmail is not null) user.UrgencyEmail = req.UrgencyEmail;
+        if (req.EnableUrgensi.HasValue) user.EnableUrgensi = req.EnableUrgensi.Value;
 
         if (!string.IsNullOrWhiteSpace(req.Password))
         {

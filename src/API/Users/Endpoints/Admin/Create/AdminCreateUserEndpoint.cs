@@ -73,7 +73,10 @@ public class AdminCreateUserEndpoint : RoleAuthorizedEndpoint<CreateUserRequest,
             IsActive = req.IsActive,
             CreatedAt = DateTime.UtcNow,
             MfaEnabled = req.MfaEnabled,
-            HighValueThreshold = req.HighValueThreshold
+            NotifThresholdMin = req.NotifThresholdMin,
+            NotifThresholdMax = req.NotifThresholdMax,
+            UrgencyEmail = req.UrgencyEmail,
+            EnableUrgensi = req.EnableUrgensi
         };
 
         _db.Users.Add(user);

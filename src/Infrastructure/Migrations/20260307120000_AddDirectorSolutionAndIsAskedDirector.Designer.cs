@@ -3,6 +3,7 @@ using System;
 using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260307120000_AddDirectorSolutionAndIsAskedDirector")]
+    partial class AddDirectorSolutionAndIsAskedDirector
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -43,14 +46,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("department_id");
 
-                    b.Property<string>("Issue")
-                        .HasColumnType("text")
-                        .HasColumnName("issue");
-
-                    b.Property<string>("ManagerNote")
-                        .HasColumnType("text")
-                        .HasColumnName("manager_note");
-
                     b.Property<string>("DirectorSolution")
                         .HasColumnType("text")
                         .HasColumnName("director_solution");
@@ -58,6 +53,14 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("IsAskedDirector")
                         .HasColumnType("boolean")
                         .HasColumnName("is_asked_director");
+
+                    b.Property<string>("Issue")
+                        .HasColumnType("text")
+                        .HasColumnName("issue");
+
+                    b.Property<string>("ManagerNote")
+                        .HasColumnType("text")
+                        .HasColumnName("manager_note");
 
                     b.Property<int?>("Rating")
                         .HasColumnType("integer")
@@ -177,11 +180,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("full_name");
 
-                    b.Property<bool>("EnableUrgensi")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("enable_urgensi");
+                    b.Property<decimal?>("HighValueThreshold")
+                        .HasColumnType("numeric")
+                        .HasColumnName("high_value_threshold");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -194,31 +195,6 @@ namespace Infrastructure.Migrations
                     b.Property<string>("MfaSecret")
                         .HasColumnType("text")
                         .HasColumnName("mfa_secret");
-
-                    b.Property<DateTime?>("LastMfaVerifiedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_mfa_verified_at");
-
-                    b.Property<DateTime?>("LastActiveAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_active_at");
-
-                    b.Property<decimal>("NotifThresholdMin")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("notif_threshold_min");
-
-                    b.Property<decimal>("NotifThresholdMax")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric")
-                        .HasDefaultValue(1000000m)
-                        .HasColumnName("notif_threshold_max");
-
-                    b.Property<string>("UrgencyEmail")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("urgency_email");
 
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text")

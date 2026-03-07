@@ -48,8 +48,23 @@ public class User {
     [Column("mfa_enabled")]
     public bool? MfaEnabled {get;set;}
 
-    [Column("high_value_threshold")]
-    public decimal? HighValueThreshold { get; set; }
+    [Column("last_mfa_verified_at")]
+    public DateTime? LastMfaVerifiedAt { get; set; }
+
+    [Column("last_active_at")]
+    public DateTime? LastActiveAt { get; set; }
+
+    [Column("notif_threshold_min")]
+    public decimal NotifThresholdMin { get; set; }
+
+    [Column("notif_threshold_max")]
+    public decimal NotifThresholdMax { get; set; } = 1000000;
+
+    [Column("urgency_email")]
+    public string? UrgencyEmail { get; set; }
+
+    [Column("enable_urgensi")]
+    public bool EnableUrgensi { get; set; } = true;
 
     public Role? RoleRef { get; set; }
 }

@@ -3,6 +3,7 @@ using System;
 using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260307160000_AddDirectorSolutionToDirectorReports")]
+    partial class AddDirectorSolutionToDirectorReports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -43,14 +46,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("department_id");
 
-                    b.Property<string>("Issue")
-                        .HasColumnType("text")
-                        .HasColumnName("issue");
-
-                    b.Property<string>("ManagerNote")
-                        .HasColumnType("text")
-                        .HasColumnName("manager_note");
-
                     b.Property<string>("DirectorSolution")
                         .HasColumnType("text")
                         .HasColumnName("director_solution");
@@ -58,6 +53,14 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("IsAskedDirector")
                         .HasColumnType("boolean")
                         .HasColumnName("is_asked_director");
+
+                    b.Property<string>("Issue")
+                        .HasColumnType("text")
+                        .HasColumnName("issue");
+
+                    b.Property<string>("ManagerNote")
+                        .HasColumnType("text")
+                        .HasColumnName("manager_note");
 
                     b.Property<int?>("Rating")
                         .HasColumnType("integer")
@@ -173,15 +176,15 @@ namespace Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
-                    b.Property<string>("FullName")
-                        .HasColumnType("text")
-                        .HasColumnName("full_name");
-
                     b.Property<bool>("EnableUrgensi")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("enable_urgensi");
+
+                    b.Property<string>("FullName")
+                        .HasColumnType("text")
+                        .HasColumnName("full_name");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")

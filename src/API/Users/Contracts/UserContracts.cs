@@ -13,7 +13,10 @@ public class UserItemResponse
     public bool IsActive { get; set; }
     public DateTime? CreatedAt { get; set; }
     public bool? MfaEnabled { get; set; }
-    public decimal? HighValueThreshold { get; set; }
+    public decimal NotifThresholdMin { get; set; }
+    public decimal NotifThresholdMax { get; set; }
+    public string? UrgencyEmail { get; set; }
+    public bool EnableUrgensi { get; set; }
 }
 
 public class ListUsersResponse
@@ -42,7 +45,10 @@ public class CreateUserRequest
     public int? DepartmentId { get; set; }
     public bool IsActive { get; set; } = true;
     public bool? MfaEnabled { get; set; }
-    public decimal? HighValueThreshold { get; set; }
+    public decimal NotifThresholdMin { get; set; }
+    public decimal NotifThresholdMax { get; set; } = 1000000;
+    public string? UrgencyEmail { get; set; }
+    public bool EnableUrgensi { get; set; } = true;
 }
 
 public class UpdateUserRequest
@@ -55,7 +61,10 @@ public class UpdateUserRequest
     public int? CompanyId { get; set; }
     public int? DepartmentId { get; set; }
     public bool? MfaEnabled { get; set; }
-    public decimal? HighValueThreshold { get; set; }
+    public decimal? NotifThresholdMin { get; set; }
+    public decimal? NotifThresholdMax { get; set; }
+    public string? UrgencyEmail { get; set; }
+    public bool? EnableUrgensi { get; set; }
 }
 
 public class UpdateUserStatusRequest

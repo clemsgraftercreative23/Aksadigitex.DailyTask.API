@@ -44,7 +44,10 @@ public class ListUsersEndpoint : EndpointWithoutRequest<ListUsersResponse>
                 IsActive = x.IsActive,
                 CreatedAt = x.CreatedAt,
                 MfaEnabled = x.MfaEnabled,
-                HighValueThreshold = x.HighValueThreshold
+                NotifThresholdMin = x.NotifThresholdMin,
+                NotifThresholdMax = x.NotifThresholdMax,
+                UrgencyEmail = x.UrgencyEmail,
+                EnableUrgensi = x.EnableUrgensi
             })
             .ToListAsync(ct);
 
