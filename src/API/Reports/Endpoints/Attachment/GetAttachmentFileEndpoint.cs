@@ -46,14 +46,29 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
             return;
         }
 
-        // Build physical path: attachmentPath is e.g. "/uploads/reports/40/file.jpg" or "uploads/reports/40/file.jpg"
-        var path = attachment.AttachmentPath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-        var physicalPath = Path.Combine(_environment.ContentRootPath, path);
-
-        // Fallback: if path doesn't start with "uploads", try under uploads folder
-        if (!System.IO.File.Exists(physicalPath) && !path.StartsWith("uploads", StringComparison.OrdinalIgnoreCase))
+        // Build physical path: attachmentPath can be:
+        // - "/uploads/reports/40/file.jpg"
+        // - "uploads/reports/40/file.jpg"
+        // - "reports/40/file.jpg" (from Backoffice)
+        // - "file.jpg" (filename only)
+        var rawPath = (attachment.AttachmentPath ?? "").Trim().TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        if (string.IsNullOrEmpty(rawPath))
         {
-            physicalPath = Path.Combine(_environment.ContentRootPath, "uploads", path);
+            await SendNotFoundAsync(ct);
+            return;
+        }
+
+        var physicalPath = Path.Combine(_environment.ContentRootPath, rawPath);
+        if (!System.IO.File.Exists(physicalPath))
+        {
+            // Fallback 1: path without "uploads" prefix
+            if (!rawPath.StartsWith("uploads", StringComparison.OrdinalIgnoreCase))
+                physicalPath = Path.Combine(_environment.ContentRootPath, "uploads", rawPath);
+        }
+        if (!System.IO.File.Exists(physicalPath))
+        {
+            // Fallback 2: path without "reports" - try uploads/reports/{reportId}/{path}
+            physicalPath = Path.Combine(_environment.ContentRootPath, "uploads", "reports", reportId.ToString(), Path.GetFileName(rawPath));
         }
 
         if (!System.IO.File.Exists(physicalPath))
