@@ -46,9 +46,15 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
             return;
         }
 
-        // Build physical path: attachmentPath is e.g. "/uploads/reports/40/file.jpg"
-        var relativePath = attachment.AttachmentPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
-        var physicalPath = Path.Combine(_environment.ContentRootPath, relativePath);
+        // Build physical path: attachmentPath is e.g. "/uploads/reports/40/file.jpg" or "uploads/reports/40/file.jpg"
+        var path = attachment.AttachmentPath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        var physicalPath = Path.Combine(_environment.ContentRootPath, path);
+
+        // Fallback: if path doesn't start with "uploads", try under uploads folder
+        if (!System.IO.File.Exists(physicalPath) && !path.StartsWith("uploads", StringComparison.OrdinalIgnoreCase))
+        {
+            physicalPath = Path.Combine(_environment.ContentRootPath, "uploads", path);
+        }
 
         if (!System.IO.File.Exists(physicalPath))
         {

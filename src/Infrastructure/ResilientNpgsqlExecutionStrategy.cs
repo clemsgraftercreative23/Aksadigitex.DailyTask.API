@@ -22,6 +22,10 @@ public class ResilientNpgsqlExecutionStrategy : ExecutionStrategy
         if (exception is NpgsqlException npgsqlEx && npgsqlEx.IsTransient)
             return true;
 
+        // TimeoutException (connection/operation timeout) - retry
+        if (exception is TimeoutException)
+            return true;
+
         // Retry pada connection errors yang umum di cloud DB
         return IsConnectionError(exception);
     }
@@ -30,10 +34,13 @@ public class ResilientNpgsqlExecutionStrategy : ExecutionStrategy
     {
         for (var e = ex; e != null; e = e.InnerException)
         {
+            if (e is TimeoutException)
+                return true;
             if (e is SocketException se && IsTransientSocketError(se.SocketErrorCode))
                 return true;
             if (e is IOException && (e.Message?.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase) == true
-                || e.Message?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true))
+                || e.Message?.Contains("connection", StringComparison.OrdinalIgnoreCase) == true
+                || e.Message?.Contains("timed out", StringComparison.OrdinalIgnoreCase) == true))
                 return true;
         }
         return false;
