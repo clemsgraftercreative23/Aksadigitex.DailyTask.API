@@ -36,9 +36,27 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
         if (!await ValidateRoleAsync(ct))
             return;
 
-        if (string.IsNullOrWhiteSpace(req.TaskDescription) || string.IsNullOrWhiteSpace(req.Issue))
+        if (string.IsNullOrWhiteSpace(req.TaskDescription))
         {
-            AddError("TaskDescription and Issue are required.");
+            AddError("Rincian kegiatan (TaskDescription) wajib diisi.");
+            await SendErrorsAsync(cancellation: ct);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(req.Issue))
+        {
+            AddError("Masalah (Issue) wajib diisi.");
+            await SendErrorsAsync(cancellation: ct);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(req.Solution))
+        {
+            AddError("Solusi (Solution) wajib diisi.");
+            await SendErrorsAsync(cancellation: ct);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(req.Result))
+        {
+            AddError("Hasil (Result) wajib diisi.");
             await SendErrorsAsync(cancellation: ct);
             return;
         }

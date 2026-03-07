@@ -5,7 +5,7 @@ using Domain;
 
 namespace API.Reports;
 
-public class SubmitReportEndpoint : RoleAuthorizedEndpoint<SubmitReportRequest, UpdateReportStatusResponse>
+public class SubmitReportEndpoint : RoleAuthorizedEndpointWithoutRequest<UpdateReportStatusResponse>
 {
     private readonly ReportStore _store;
 
@@ -29,7 +29,7 @@ public class SubmitReportEndpoint : RoleAuthorizedEndpoint<SubmitReportRequest, 
     protected override UserRole[] GetAllowedRoles() =>
         new[] { UserRole.User };
 
-    public override async Task HandleAsync(SubmitReportRequest req, CancellationToken ct)
+    public override async Task HandleAsync(CancellationToken ct)
     {
         if (!await ValidateRoleAsync(ct))
             return;

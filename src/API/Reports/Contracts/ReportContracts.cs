@@ -13,8 +13,6 @@ public class CreateReportRequest
     public string Status { get; set; } = "draft"; // "draft" or "submitted"
 }
 
-public class SubmitReportRequest { }
-
 public class ApproveReportRequest
 {
     public string Note { get; set; } = string.Empty;
@@ -64,6 +62,8 @@ public class ReportItemResponse
     public string Result { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? ManagerNote { get; set; }
+    public string? DirectorSolution { get; set; }
+    public bool IsAskedDirector { get; set; }
     public int? Rating { get; set; } // 1-5 rating oleh SuperAdmin
     public DateTime CreatedAt { get; set; }
     public IReadOnlyList<ReportAttachmentResponse> Attachments { get; set; } = Array.Empty<ReportAttachmentResponse>();

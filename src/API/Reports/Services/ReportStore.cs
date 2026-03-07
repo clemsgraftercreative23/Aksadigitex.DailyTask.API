@@ -142,6 +142,8 @@ public static class ReportMappingExtensions
             Result = report.Result,
             Status = report.Status,
             ManagerNote = report.ManagerNote,
+            DirectorSolution = report.DirectorSolution,
+            IsAskedDirector = report.IsAskedDirector,
             Rating = report.Rating,
             CreatedAt = report.CreatedAt,
             Attachments = report.Attachments

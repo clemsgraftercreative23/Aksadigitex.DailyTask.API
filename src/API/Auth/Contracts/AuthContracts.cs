@@ -43,3 +43,13 @@ public class RefreshTokenResponse
     public string RefreshToken { get; set; } = string.Empty;
     public DateTime RefreshTokenExpiresAtUtc { get; set; }
 }
+
+/// <summary>
+/// Response error untuk login gagal — memberikan feedback detail ke user.
+/// </summary>
+public class LoginErrorResponse
+{
+    public string Message { get; set; } = string.Empty;
+    public string ErrorCode { get; set; } = string.Empty;
+    public string? Details { get; set; }
+}

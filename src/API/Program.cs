@@ -14,7 +14,13 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    opt.UseNpgsql(
+        builder.Configuration.GetConnectionString("Default"),
+        npgsql =>
+        {
+            npgsql.CommandTimeout(60);
+            npgsql.ExecutionStrategy(deps => new ResilientNpgsqlExecutionStrategy(deps));
+        }));
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<ReportApprovalOptions>(builder.Configuration.GetSection(ReportApprovalOptions.SectionName));
@@ -64,6 +70,14 @@ builder.Services.SwaggerDocument(opt =>
 
 var app = builder.Build();
 
+// Serve uploaded report attachments
+var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
+Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads",
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseFastEndpoints(c =>

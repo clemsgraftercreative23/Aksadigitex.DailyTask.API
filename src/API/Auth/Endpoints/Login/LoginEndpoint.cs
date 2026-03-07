@@ -47,15 +47,25 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
 
         if (user is null)
         {
-            AddError("Email tidak terdaftar atau akun tidak aktif.");
-            await SendErrorsAsync(statusCode: 401, cancellation: ct);
+            HttpContext.Response.StatusCode = 401;
+            await HttpContext.Response.WriteAsJsonAsync(new LoginErrorResponse
+            {
+                Message = "Email tidak terdaftar atau akun tidak aktif.",
+                ErrorCode = "USER_NOT_FOUND",
+                Details = "Periksa kembali alamat email atau ID karyawan. Jika belum terdaftar, hubungi administrator."
+            }, ct);
             return;
         }
 
         if (!PasswordVerifier.Verify(req.Password, user.PasswordHash))
         {
-            AddError("Password salah. Silakan coba lagi.");
-            await SendErrorsAsync(statusCode: 401, cancellation: ct);
+            HttpContext.Response.StatusCode = 401;
+            await HttpContext.Response.WriteAsJsonAsync(new LoginErrorResponse
+            {
+                Message = "Password salah.",
+                ErrorCode = "INVALID_PASSWORD",
+                Details = "Kata sandi yang Anda masukkan tidak sesuai. Silakan coba lagi atau gunakan fitur lupa sandi."
+            }, ct);
             return;
         }
 

@@ -37,6 +37,12 @@ public class DailyReport
     [Column("manager_note")]
     public string? ManagerNote { get; set; }
 
+    [Column("director_solution")]
+    public string? DirectorSolution { get; set; }
+
+    [Column("is_asked_director")]
+    public bool IsAskedDirector { get; set; }
+
     [Column("attachment_path")]
     public string? AttachmentPath { get; set; }
 
