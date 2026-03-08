@@ -26,9 +26,9 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
         });
     }
 
-    // Hanya user dengan role User yang bisa create report
+    // Per about.md §4.2: user, admin_divisi bisa buat report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.User };
+        new[] { UserRole.User, UserRole.AdminDivisi };
 
     public override async Task HandleAsync(CreateReportRequest req, CancellationToken ct)
     {
@@ -69,6 +69,8 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             return;
         }
 
+        var (deptId, _, _) = await _store.GetReviewerContextAsync(userId.Value, ct);
+
         var report = await _store.CreateAsync(
             userId.Value,
             req.ReportDate,
@@ -77,7 +79,8 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             req.Issue.Trim(),
             req.Solution.Trim(),
             req.Result.Trim(),
-            req.Status
+            req.Status,
+            deptId
         );
 
         await SendAsync(new CreateReportResponse

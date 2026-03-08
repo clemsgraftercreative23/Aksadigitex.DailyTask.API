@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using API.Auth;
 using Domain;
+using System.Security.Claims;
 
 namespace API.Reports;
 
@@ -25,25 +26,32 @@ public class RejectReportEndpoint : RoleAuthorizedEndpoint<RejectReportRequest, 
         Summary(s =>
         {
             s.Summary = "Reject report";
-            s.Description = "Rejects a report. Access is restricted to SuperAdmin role only.";
+            s.Description = "Rejects a report. Per about.md: admin_divisi, super_admin, super_duper_admin dengan scope masing-masing.";
         });
     }
 
-    // SuperAdmin dan SuperDuperAdmin bisa reject report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+        new[] { UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(RejectReportRequest req, CancellationToken ct)
     {
-        // Validasi role terlebih dahulu
-        if (!await ValidateRoleAsync(ct))
-            return;
+        if (!await ValidateRoleAsync(ct)) return;
+
+        var userId = HttpContext.User.GetUserId();
+        if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+        var roleClaim = HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        if (!Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var role))
+        { await SendForbiddenAsync(ct); return; }
+
+        var (deptId, companyId, fullName) = await _store.GetReviewerContextAsync(userId.Value, ct);
 
         var reportId = Route<int>("id");
-        var report = await _store.GetByIdAsync(reportId);
-        if (report is null)
+        var check = await _store.CanReviewAsync(reportId, role, deptId, companyId, isApprove: false, ct);
+        if (!check.Allowed)
         {
-            await SendNotFoundAsync(ct);
+            HttpContext.Response.StatusCode = 403;
+            await HttpContext.Response.WriteAsJsonAsync(new { message = check.ErrorMessage }, ct);
             return;
         }
 
@@ -54,11 +62,9 @@ public class RejectReportEndpoint : RoleAuthorizedEndpoint<RejectReportRequest, 
             return;
         }
 
-        var updated = await _store.RejectAsync(reportId, req.Reason.Trim());
+        var updated = await _store.RejectAsync(reportId, req.Reason.Trim(), fullName, ct);
+        if (updated is null) { await SendNotFoundAsync(ct); return; }
 
-        await SendAsync(new UpdateReportStatusResponse
-        {
-            Item = updated!.ToResponse()
-        }, cancellation: ct);
+        await SendAsync(new UpdateReportStatusResponse { Item = updated.ToResponse() }, cancellation: ct);
     }
 }

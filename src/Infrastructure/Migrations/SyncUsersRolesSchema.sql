@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
     "MigrationId" character varying(150) NOT NULL,
     "ProductVersion" character varying(32) NOT NULL,
     CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
@@ -19,10 +19,10 @@ BEGIN
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS role_name TEXT;
 
     INSERT INTO roles(id, role_name) VALUES
-        (0, 'User'),
-        (1, 'AdminDivisi'),
-        (2, 'SuperAdmin'),
-        (3, 'SuperDuperAdmin')
+        (1, 'user'),
+        (2, 'admin_divisi'),
+        (3, 'super_admin'),
+        (4, 'super_duper_admin')
     ON CONFLICT (id) DO UPDATE SET role_name = EXCLUDED.role_name;
 
     CREATE TABLE IF NOT EXISTS users (
@@ -30,7 +30,7 @@ BEGIN
         full_name TEXT,
         email TEXT,
         password_hash TEXT,
-        role_id INTEGER NOT NULL DEFAULT 0,
+        role_id INTEGER NOT NULL DEFAULT 1,
         position TEXT,
         company_id INTEGER,
         department_id INTEGER,
@@ -54,10 +54,10 @@ BEGIN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS high_value_threshold NUMERIC;
 
-    UPDATE users SET role_id = 0 WHERE role_id IS NULL;
+    UPDATE users SET role_id = 1 WHERE role_id IS NULL;
     UPDATE users SET is_active = TRUE WHERE is_active IS NULL;
 
-    ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 0;
+    ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 1;
     ALTER TABLE users ALTER COLUMN is_active SET DEFAULT TRUE;
 
     DO $$

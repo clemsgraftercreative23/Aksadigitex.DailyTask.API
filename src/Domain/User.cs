@@ -18,7 +18,7 @@ public class User {
     public string PasswordHash {get;set;}="";
 
     [Column("role_id")]
-    public int RoleId { get; set; } = (int)UserRole.User;
+    public int RoleId { get; set; } = 1;
 
     [NotMapped]
     public UserRole Role

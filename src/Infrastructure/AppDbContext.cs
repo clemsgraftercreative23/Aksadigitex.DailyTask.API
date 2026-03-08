@@ -11,6 +11,11 @@ public class AppDbContext : DbContext {
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<DailyReport> DailyReports => Set<DailyReport>();
     public DbSet<DailyReportAttachment> DailyReportAttachments => Set<DailyReportAttachment>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<CompanyDepartment> CompanyDepartments => Set<CompanyDepartment>();
+    public DbSet<ReportPeriod> ReportPeriods => Set<ReportPeriod>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

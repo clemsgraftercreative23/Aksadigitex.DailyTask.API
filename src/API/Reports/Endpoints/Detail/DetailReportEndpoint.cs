@@ -1,15 +1,19 @@
 using FastEndpoints;
+using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 
 namespace API.Reports;
 
 public class DetailReportEndpoint : EndpointWithoutRequest<DetailReportResponse>
 {
     private readonly ReportStore _store;
+    private readonly AppDbContext _db;
 
-    public DetailReportEndpoint(ReportStore store)
+    public DetailReportEndpoint(ReportStore store, AppDbContext db)
     {
         _store = store;
+        _db = db;
     }
 
     public override void Configure()
@@ -20,7 +24,7 @@ public class DetailReportEndpoint : EndpointWithoutRequest<DetailReportResponse>
         Summary(s =>
         {
             s.Summary = "Get report detail";
-            s.Description = "Returns a single daily report by id.";
+            s.Description = "Returns a single daily report by id with user info.";
         });
     }
 
@@ -35,9 +39,29 @@ public class DetailReportEndpoint : EndpointWithoutRequest<DetailReportResponse>
             return;
         }
 
-        await SendAsync(new DetailReportResponse
+        var resp = report.ToResponse();
+
+        var user = await _db.Users.AsNoTracking()
+            .Include(u => u.RoleRef)
+            .FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+
+        if (user != null)
         {
-            Item = report.ToResponse()
-        }, cancellation: ct);
+            resp.UserFullName = user.FullName;
+            resp.UserEmail = user.Email;
+            resp.UserPosition = user.Position;
+            resp.DepartmentId = user.DepartmentId;
+            resp.CompanyId = user.CompanyId;
+
+            if (user.DepartmentId.HasValue)
+                resp.DepartmentName = await _db.Departments.AsNoTracking()
+                    .Where(d => d.Id == user.DepartmentId.Value).Select(d => d.DepartmentName).FirstOrDefaultAsync(ct);
+
+            if (user.CompanyId.HasValue)
+                resp.CompanyName = await _db.Companies.AsNoTracking()
+                    .Where(c => c.Id == user.CompanyId.Value).Select(c => c.CompanyName).FirstOrDefaultAsync(ct);
+        }
+
+        await SendAsync(new DetailReportResponse { Item = resp }, cancellation: ct);
     }
 }

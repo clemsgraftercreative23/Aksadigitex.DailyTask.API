@@ -75,4 +75,6 @@ public class UpdateUserStatusRequest
 public class ProfileResponse
 {
     public UserItemResponse Item { get; set; } = new();
+    public string? CompanyName { get; set; }
+    public string? DepartmentName { get; set; }
 }

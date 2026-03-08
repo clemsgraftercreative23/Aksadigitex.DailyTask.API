@@ -1,0 +1,85 @@
+using API.Auth;
+using API.Reports;
+using Domain;
+using FastEndpoints;
+using Infrastructure;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+
+namespace API.Admin;
+
+public class ActivityLogEntry
+{
+    public int Id { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string? Position { get; set; }
+    public string? CompanyName { get; set; }
+    public string? DepartmentName { get; set; }
+}
+
+public class ActivityLogResponse
+{
+    public string Date { get; set; } = string.Empty;
+    public List<ActivityLogEntry> NotReported { get; set; } = new();
+}
+
+public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<ActivityLogResponse>
+{
+    private readonly AppDbContext _db;
+    public ActivityLogEndpoint(AppDbContext db) => _db = db;
+    protected override UserRole[]? GetAllowedRoles() =>
+        new[] { UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+
+    public override void Configure()
+    {
+        Get("v1/activity-log");
+        AuthSchemes(JwtBearerDefaults.AuthenticationScheme);
+        Description(d => d.WithTags("Admin - Activity Log"));
+    }
+
+    public override async Task HandleAsync(CancellationToken ct)
+    {
+        if (!await ValidateRoleAsync(ct)) return;
+
+        var userId = User.GetUserId();
+        if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+        var currentUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var role = currentUser.Role;
+
+        var usersQuery = _db.Users.AsNoTracking().Where(u => u.IsActive && u.RoleId <= (int)UserRole.AdminDivisi);
+
+        if (role == UserRole.AdminDivisi)
+            usersQuery = usersQuery.Where(u => u.DepartmentId == currentUser.DepartmentId);
+        else if (role == UserRole.SuperAdmin)
+            usersQuery = usersQuery.Where(u => u.CompanyId == currentUser.CompanyId);
+
+        var todayReporterIds = await _db.DailyReports.AsNoTracking()
+            .Where(r => r.ReportDate == today)
+            .Select(r => r.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var companies = await _db.Companies.AsNoTracking().ToListAsync(ct);
+        var departments = await _db.Departments.AsNoTracking().ToListAsync(ct);
+
+        var notReported = await usersQuery
+            .Where(u => !todayReporterIds.Contains(u.Id))
+            .Select(u => new ActivityLogEntry
+            {
+                Id = u.Id,
+                FullName = u.FullName,
+                Position = u.Position,
+            })
+            .ToListAsync(ct);
+
+        await SendAsync(new ActivityLogResponse
+        {
+            Date = today.ToString("yyyy-MM-dd"),
+            NotReported = notReported,
+        }, cancellation: ct);
+    }
+}

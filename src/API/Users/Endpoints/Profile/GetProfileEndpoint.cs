@@ -1,7 +1,9 @@
+#nullable enable
 using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using API.Reports;
 
 namespace API.Users;
 
@@ -46,9 +48,32 @@ public class GetProfileEndpoint : EndpointWithoutRequest<ProfileResponse>
             return;
         }
 
+        string? companyName = null;
+        string? departmentName = null;
+
+        if (user.CompanyId.HasValue)
+        {
+            companyName = await _db.Companies
+                .AsNoTracking()
+                .Where(c => c.Id == user.CompanyId.Value)
+                .Select(c => c.CompanyName)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        if (user.DepartmentId.HasValue)
+        {
+            departmentName = await _db.Departments
+                .AsNoTracking()
+                .Where(d => d.Id == user.DepartmentId.Value)
+                .Select(d => d.DepartmentName)
+                .FirstOrDefaultAsync(ct);
+        }
+
         await SendAsync(new ProfileResponse
         {
-            Item = user.ToUserItemResponse()
+            Item = user.ToUserItemResponse(),
+            CompanyName = companyName,
+            DepartmentName = departmentName,
         }, cancellation: ct);
     }
 }

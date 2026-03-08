@@ -28,6 +28,17 @@ public class SetRatingRequest
     public int Rating { get; set; } // 1-5 rating
 }
 
+/// <summary>
+/// SDA give solution. Per about.md §7.
+/// </summary>
+public class GiveSolutionRequest
+{
+    public string DirectorSolution { get; set; } = string.Empty;
+    public string? ManagerNote { get; set; }
+    /// <summary>True = director_reports (Holding), False = daily_report (Standard). .NET API currently supports Standard only.</summary>
+    public bool IsHolding { get; set; }
+}
+
 public class UploadAttachmentRequest
 {
     public int Id { get; set; }
@@ -64,9 +75,16 @@ public class ReportItemResponse
     public string? ManagerNote { get; set; }
     public string? DirectorSolution { get; set; }
     public bool IsAskedDirector { get; set; }
-    public int? Rating { get; set; } // 1-5 rating oleh SuperAdmin
+    public int? Rating { get; set; }
     public DateTime CreatedAt { get; set; }
     public IReadOnlyList<ReportAttachmentResponse> Attachments { get; set; } = Array.Empty<ReportAttachmentResponse>();
+    public string? UserFullName { get; set; }
+    public string? UserEmail { get; set; }
+    public string? UserPosition { get; set; }
+    public string? DepartmentName { get; set; }
+    public string? CompanyName { get; set; }
+    public int? DepartmentId { get; set; }
+    public int? CompanyId { get; set; }
 }
 
 public class CreateReportResponse
