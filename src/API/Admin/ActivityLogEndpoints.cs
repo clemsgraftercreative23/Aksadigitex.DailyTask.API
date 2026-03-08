@@ -39,22 +39,34 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        if (!await ValidateRoleAsync(ct)) return;
-
         var userId = User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
-        var currentUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+        var currentUser = await _db.Users.AsNoTracking()
+            .Include(u => u.RoleRef)
+            .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
         if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
 
+        // Authorize using role_name from DB (handles role_id/enum mismatch)
+        var roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+        var roleAllowed = roleName is "admin_divisi" or "super_admin" or "super_duper_admin"
+            || currentUser.Role is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
+        if (!roleAllowed)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await HttpContext.Response.WriteAsJsonAsync(
+                new { message = "Akses ditolak: role tidak diizinkan mengakses halaman belum lapor" },
+                cancellationToken: ct);
+            return;
+        }
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var role = currentUser.Role;
 
         var usersQuery = _db.Users.AsNoTracking().Where(u => u.IsActive && u.RoleId <= (int)UserRole.AdminDivisi);
 
-        if (role == UserRole.AdminDivisi)
+        if (roleName == "admin_divisi" || currentUser.Role == UserRole.AdminDivisi)
             usersQuery = usersQuery.Where(u => u.DepartmentId == currentUser.DepartmentId);
-        else if (role == UserRole.SuperAdmin)
+        else if (roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin)
             usersQuery = usersQuery.Where(u => u.CompanyId == currentUser.CompanyId);
 
         var todayReporterIds = await _db.DailyReports.AsNoTracking()
