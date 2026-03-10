@@ -6,14 +6,14 @@ namespace Domain;
 public enum UserRole
 {
     /// <summary>User biasa dengan akses terbatas</summary>
-    User = 1,
+    User = 0,
     
     /// <summary>Admin divisi - mengelola laporan dalam divisinya</summary>
-    AdminDivisi = 2,
-    
-    /// <summary>Super admin - mengelola semua laporan dan user</summary>
-    SuperAdmin = 3,
+    AdminDivisi = 1,
     
     /// <summary>Super duper admin - akses penuh ke sistem</summary>
-    SuperDuperAdmin = 4
+    SuperDuperAdmin = 3,
+    
+    /// <summary>Super admin - mengelola semua laporan dan user</summary>
+    SuperAdmin =2
 }

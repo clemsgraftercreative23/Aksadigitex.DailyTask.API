@@ -35,24 +35,22 @@ public abstract class RoleAuthorizedEndpoint<TRequest, TResponse> : Endpoint<TRe
         var roleClaim = HttpContext.User.Claims
             .FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
 
-        // Jika tidak ada role claim, tolak akses
         if (string.IsNullOrEmpty(roleClaim))
         {
-            await SendForbiddenAsync(ct);
+            await SendForbiddenAsync(ct, "Role claim is missing from token.");
             return false;
         }
 
-        // Parse role claim
         if (!Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var userRole))
         {
-            await SendForbiddenAsync(ct);
+            await SendForbiddenAsync(ct, $"Role claim '{roleClaim}' is not a valid UserRole.");
             return false;
         }
 
-        // Cek apakah role user termasuk dalam daftar yang diizinkan
         if (!allowedRoles.Contains(userRole))
         {
-            await SendForbiddenAsync(ct);
+            var allowedStr = string.Join(", ", allowedRoles);
+            await SendForbiddenAsync(ct, $"Akses ditolak: role Anda '{userRole}' tidak diizinkan mengakses endpoint ini. Required: {allowedStr}");
             return false;
         }
 
@@ -62,11 +60,11 @@ public abstract class RoleAuthorizedEndpoint<TRequest, TResponse> : Endpoint<TRe
     /// <summary>
     /// Send forbidden response dengan pesan role tidak authorized
     /// </summary>
-    protected async Task SendForbiddenAsync(CancellationToken ct)
+    protected async Task SendForbiddenAsync(CancellationToken ct, string message = "Akses ditolak: role Anda tidak diizinkan mengakses endpoint ini")
     {
         HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
         await HttpContext.Response.WriteAsJsonAsync(
-            new { message = "Akses ditolak: role Anda tidak diizinkan mengakses endpoint ini" },
+            new { message = message },
             cancellationToken: ct);
     }
 }

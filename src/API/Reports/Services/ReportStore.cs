@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Domain;
 using Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using Dapper;
 
 namespace API.Reports;
 
@@ -40,9 +41,9 @@ public class ReportStore
     /// </summary>
     public async Task<decimal> GetReportTotalNominalAsync(int reportId, CancellationToken ct = default)
     {
-        var result = await _context.Database
-            .SqlQueryRaw<decimal>("SELECT COALESCE(SUM(total_price), 0) FROM daily_report_finance_detail WHERE report_id = {0}", reportId)
-            .FirstOrDefaultAsync(ct);
+        var connection = _context.Database.GetDbConnection();
+        var sql = "SELECT COALESCE(SUM(total_price), 0) FROM daily_report_finance_detail WHERE report_id = @ReportId";
+        var result = await connection.QueryFirstOrDefaultAsync<decimal>(sql, new { ReportId = reportId });
         return result;
     }
 
