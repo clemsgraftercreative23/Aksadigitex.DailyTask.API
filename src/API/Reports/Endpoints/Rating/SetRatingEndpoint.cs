@@ -21,8 +21,8 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
         Description(d => d.WithTags("Reports"));
         Summary(s =>
         {
-            s.Summary = "Set report rating";
-            s.Description = "Sets rating for a report (1-5). Only SuperAdmin can set rating.";
+            s.Summary = "Set report ratings";
+            s.Description = "Sets issue and solution ratings for a report (1-5). Only SuperAdmin can set rating.";
         });
     }
 
@@ -37,9 +37,9 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
             return;
 
         // Validasi rating value
-        if (req.Rating < 1 || req.Rating > 5)
+        if (req.IssueRating < 1 || req.IssueRating > 5 || req.SolutionRating < 1 || req.SolutionRating > 5)
         {
-            AddError("Rating must be between 1 and 5.");
+            AddError("Ratings must be between 1 and 5.");
             await SendErrorsAsync(cancellation: ct);
             return;
         }
@@ -53,7 +53,7 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
             return;
         }
 
-        var updated = await _store.SetRatingAsync(reportId, req.Rating);
+        var updated = await _store.SetRatingAsync(reportId, req.IssueRating, req.SolutionRating);
 
         await SendAsync(new UpdateReportStatusResponse
         {

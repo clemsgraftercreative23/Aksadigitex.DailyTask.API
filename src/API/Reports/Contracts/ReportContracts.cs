@@ -25,7 +25,8 @@ public class RejectReportRequest
 
 public class SetRatingRequest
 {
-    public int Rating { get; set; } // 1-5 rating
+    public int IssueRating { get; set; } // 1-5 rating masalah
+    public int SolutionRating { get; set; } // 1-5 rating solusi
 }
 
 /// <summary>
@@ -75,7 +76,8 @@ public class ReportItemResponse
     public string? ManagerNote { get; set; }
     public string? DirectorSolution { get; set; }
     public bool IsAskedDirector { get; set; }
-    public int? Rating { get; set; }
+    public int? IssueRating { get; set; }
+    public int? SolutionRating { get; set; }
     public DateTime CreatedAt { get; set; }
     public IReadOnlyList<ReportAttachmentResponse> Attachments { get; set; } = Array.Empty<ReportAttachmentResponse>();
     public string? UserFullName { get; set; }

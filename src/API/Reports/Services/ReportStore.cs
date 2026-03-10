@@ -302,13 +302,14 @@ public class ReportStore
         return true;
     }
 
-    public async Task<DailyReport?> SetRatingAsync(int id, int rating)
+    public async Task<DailyReport?> SetRatingAsync(int id, int issueRating, int solutionRating)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
         if (report is null)
             return null;
 
-        report.Rating = rating;
+        report.IssueRating = issueRating;
+        report.SolutionRating = solutionRating;
         _context.DailyReports.Update(report);
         await _context.SaveChangesAsync();
         return report;
@@ -352,7 +353,8 @@ public static class ReportMappingExtensions
             ManagerNote = report.ManagerNote,
             DirectorSolution = report.DirectorSolution,
             IsAskedDirector = report.IsAskedDirector,
-            Rating = report.Rating,
+            IssueRating = report.IssueRating,
+            SolutionRating = report.SolutionRating,
             CreatedAt = report.CreatedAt,
             Attachments = report.Attachments
                 .Select(a => new ReportAttachmentResponse

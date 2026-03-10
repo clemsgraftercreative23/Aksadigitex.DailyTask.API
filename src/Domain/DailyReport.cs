@@ -52,8 +52,11 @@ public class DailyReport
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
-    [Column("rating")]
-    public int? Rating { get; set; } // 1-5 rating oleh SuperAdmin
+    [Column("issue_rating")]
+    public int? IssueRating { get; set; } // 1-5 rating masalah oleh SuperDuperAdmin
+
+    [Column("solution_rating")]
+    public int? SolutionRating { get; set; } // 1-5 rating solusi oleh SuperDuperAdmin
 
     // Foreign key
     public User? User { get; set; }
