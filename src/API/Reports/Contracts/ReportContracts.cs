@@ -87,6 +87,8 @@ public class ReportItemResponse
     public string? CompanyName { get; set; }
     public int? DepartmentId { get; set; }
     public int? CompanyId { get; set; }
+    /// <summary>Role name of report creator (user, admin_divisi, super_admin, super_duper_admin) for approval hierarchy.</summary>
+    public string? UserRoleName { get; set; }
 }
 
 public class CreateReportResponse

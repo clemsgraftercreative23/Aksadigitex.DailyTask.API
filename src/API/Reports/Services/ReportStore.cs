@@ -80,10 +80,20 @@ public class ReportStore
         var (report, reportUser) = await GetReportWithUserAsync(reportId, ct);
         if (report is null || reportUser is null) return new ReviewCheckResult(false, "Laporan tidak ditemukan.");
 
+        // Hierarchy: user → admin_divisi, super_admin, SDA; admin_divisi → super_admin, SDA; super_admin → SDA only
+        var creatorRole = reportUser.Role;
+        if (creatorRole == UserRole.AdminDivisi && reviewerRole == UserRole.AdminDivisi)
+            return new ReviewCheckResult(false, "Admin Divisi tidak dapat menyetujui laporan Admin Divisi.");
+        if (creatorRole == UserRole.SuperAdmin && reviewerRole != UserRole.SuperDuperAdmin)
+            return new ReviewCheckResult(false, "Laporan Super Admin hanya dapat disetujui oleh Super Duper Admin.");
+        if (creatorRole == UserRole.SuperDuperAdmin && reviewerRole != UserRole.SuperDuperAdmin)
+            return new ReviewCheckResult(false, "Laporan Super Duper Admin hanya dapat disetujui oleh Super Duper Admin.");
+
         // Scope: admin_divisi → divisi sendiri; super_admin → perusahaan sendiri; SDA → semua
         if (reviewerRole == UserRole.AdminDivisi)
         {
-            if (report.DepartmentId != reviewerDepartmentId)
+            var reportDeptId = report.DepartmentId ?? reportUser.DepartmentId;
+            if (reportDeptId != reviewerDepartmentId)
                 return new ReviewCheckResult(false, "Akses ditolak (Divisi berbeda).");
         }
         else if (reviewerRole == UserRole.SuperAdmin)

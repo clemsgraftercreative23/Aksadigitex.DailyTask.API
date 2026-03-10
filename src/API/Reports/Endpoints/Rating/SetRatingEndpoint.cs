@@ -22,13 +22,13 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
         Summary(s =>
         {
             s.Summary = "Set report ratings";
-            s.Description = "Sets issue and solution ratings for a report (1-5). Only SuperAdmin can set rating.";
+            s.Description = "Sets issue and solution ratings for a report (1-5). Only Super Duper Admin can set rating.";
         });
     }
 
-    // SuperAdmin dan SuperDuperAdmin bisa set rating
+    // Hanya SuperDuperAdmin yang boleh memberi rating
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+        new[] { UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(SetRatingRequest req, CancellationToken ct)
     {

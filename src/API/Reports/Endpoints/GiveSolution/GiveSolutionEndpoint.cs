@@ -60,7 +60,7 @@ public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, 
             : null;
 
         _logger.LogInformation(
-            "[GIVE_SOLUTION_AUDIT] userId={UserId}, fullName={FullName}, email={Email}, roleToken={RoleToken}, roleDb={RoleDb}, departmentId={DepartmentId}, departmentName={DepartmentName}, companyId={CompanyId}, reportId={ReportId}",
+            "===========================00000000000000000000000000[GIVE_SOLUTION_AUDIT] userId={UserId}, fullName={FullName}, email={Email}, roleToken={RoleToken}, roleDb={RoleDb}, departmentId={DepartmentId}, departmentName={DepartmentName}, companyId={CompanyId}, reportId={ReportId}",
             userId.Value,
             user?.FullName ?? "-",
             user?.Email ?? "-",

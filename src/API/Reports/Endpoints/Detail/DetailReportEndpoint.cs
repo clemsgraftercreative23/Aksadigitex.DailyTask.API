@@ -1,3 +1,4 @@
+using Domain;
 using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -52,6 +53,14 @@ public class DetailReportEndpoint : EndpointWithoutRequest<DetailReportResponse>
             resp.UserPosition = user.Position;
             resp.DepartmentId = user.DepartmentId;
             resp.CompanyId = user.CompanyId;
+            resp.UserRoleName = user.Role switch
+            {
+                UserRole.User => "user",
+                UserRole.AdminDivisi => "admin_divisi",
+                UserRole.SuperAdmin => "super_admin",
+                UserRole.SuperDuperAdmin => "super_duper_admin",
+                _ => user.Role.ToString().ToLowerInvariant()
+            };
 
             if (user.DepartmentId.HasValue)
                 resp.DepartmentName = await _db.Departments.AsNoTracking()
