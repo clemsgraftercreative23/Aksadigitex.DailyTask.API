@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
 using Domain;
 using System.Security.Claims;
+using Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 namespace API.Reports;
 
@@ -13,8 +15,15 @@ namespace API.Reports;
 public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, UpdateReportStatusResponse>
 {
     private readonly ReportStore _store;
+    private readonly AppDbContext _db;
+    private readonly ILogger<GiveSolutionEndpoint> _logger;
 
-    public GiveSolutionEndpoint(ReportStore store) => _store = store;
+    public GiveSolutionEndpoint(ReportStore store, AppDbContext db, ILogger<GiveSolutionEndpoint> logger)
+    {
+        _store = store;
+        _db = db;
+        _logger = logger;
+    }
 
     public override void Configure()
     {
@@ -28,14 +37,42 @@ public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, 
         });
     }
 
-    protected override UserRole[] GetAllowedRoles() => new[] { UserRole.SuperDuperAdmin };
+    protected override UserRole[] GetAllowedRoles() => new[] { UserRole.SuperDuperAdmin, UserRole.SuperAdmin };
 
     public override async Task HandleAsync(GiveSolutionRequest req, CancellationToken ct)
     {
-        if (!await ValidateRoleAsync(ct)) return;
-
         var userId = HttpContext.User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+        var roleClaim = HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value ?? "-";
+
+        var user = await _db.Users
+            .AsNoTracking()
+            .Include(u => u.RoleRef)
+            .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+
+        var departmentName = user?.DepartmentId.HasValue == true
+            ? await _db.Departments
+                .AsNoTracking()
+                .Where(d => d.Id == user.DepartmentId!.Value)
+                .Select(d => d.DepartmentName)
+                .FirstOrDefaultAsync(ct)
+            : null;
+
+        _logger.LogInformation(
+            "[GIVE_SOLUTION_AUDIT] userId={UserId}, fullName={FullName}, email={Email}, roleToken={RoleToken}, roleDb={RoleDb}, departmentId={DepartmentId}, departmentName={DepartmentName}, companyId={CompanyId}, reportId={ReportId}",
+            userId.Value,
+            user?.FullName ?? "-",
+            user?.Email ?? "-",
+            roleClaim,
+            user?.RoleRef?.RoleName ?? user?.Role.ToString() ?? "-",
+            user?.DepartmentId,
+            departmentName ?? "-",
+            user?.CompanyId,
+            Route<int>("id")
+        );
+
+        if (!await ValidateRoleAsync(ct)) return;
 
         var (_, _, fullName) = await _store.GetReviewerContextAsync(userId.Value, ct);
 
