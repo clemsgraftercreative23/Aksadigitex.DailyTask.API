@@ -5,6 +5,7 @@ using Domain;
 using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Dapper;
+using API.Services;
 
 namespace API.Reports;
 
@@ -16,10 +17,12 @@ public record ReviewCheckResult(bool Allowed, string? ErrorMessage);
 public class ReportStore
 {
     private readonly AppDbContext _context;
+    private readonly IFirebasePushService _fcm;
 
-    public ReportStore(AppDbContext context)
+    public ReportStore(AppDbContext context, IFirebasePushService fcm)
     {
         _context = context;
+        _fcm = fcm;
     }
 
     /// <summary>
@@ -197,6 +200,8 @@ public class ReportStore
         };
         _context.Notifications.Add(notif);
         await _context.SaveChangesAsync(ct);
+        var recipient = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
+        await _fcm.SendAsync(recipient, "Laporan Disetujui", notif.Message, notif.Type ?? "laporan_diapprove", id, ct);
         return report;
     }
 
@@ -220,6 +225,8 @@ public class ReportStore
         };
         _context.Notifications.Add(notif);
         await _context.SaveChangesAsync(ct);
+        var recipientReject = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
+        await _fcm.SendAsync(recipientReject, "Laporan Ditolak", notif.Message, notif.Type ?? "laporan_direview", id, ct);
         return report;
     }
 
@@ -246,6 +253,8 @@ public class ReportStore
         };
         _context.Notifications.Add(notif);
         await _context.SaveChangesAsync(ct);
+        var recipientSolution = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
+        await _fcm.SendAsync(recipientSolution, "Solusi Tersedia", notif.Message, notif.Type ?? "solution_ready", reportId, ct);
         return report;
     }
 
@@ -266,24 +275,29 @@ public class ReportStore
             ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 80) + "..."
             : (report.Issue ?? report.TaskDescription ?? "");
 
+        var msgUser = $"🟡 [BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
+        var prefix = currentRole == UserRole.AdminDivisi ? "🔴 [URGENT] Admin " : "🔴 [URGENT] ";
+        var msgAdmin = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"";
+
         if (currentRole == UserRole.User)
         {
             var admins = await _context.Users
                 .AsNoTracking()
                 .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == departmentId && u.CompanyId == companyId && u.IsActive)
-                .Select(u => u.Id)
+                .Select(u => new { u.Id, u.FcmToken })
                 .ToListAsync(ct);
-            foreach (var adminId in admins)
+            foreach (var a in admins)
             {
                 _context.Notifications.Add(new Notification
                 {
-                    RecipientUserId = adminId,
+                    RecipientUserId = a.Id,
                     SenderType = "system",
-                    Message = $"🟡 [BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"",
+                    Message = msgUser,
                     Type = "urgent_solution",
                     ReferenceId = reportId,
                     CreatedAt = DateTime.UtcNow
                 });
+                await _fcm.SendAsync(a.FcmToken, "Permintaan Bantuan", msgUser, "urgent_solution", reportId, ct);
             }
         }
         else
@@ -291,20 +305,20 @@ public class ReportStore
             var sdas = await _context.Users
                 .AsNoTracking()
                 .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
-                .Select(u => u.Id)
+                .Select(u => new { u.Id, u.FcmToken })
                 .ToListAsync(ct);
-            var prefix = currentRole == UserRole.AdminDivisi ? "🔴 [URGENT] Admin " : "🔴 [URGENT] ";
-            foreach (var sdaId in sdas)
+            foreach (var s in sdas)
             {
                 _context.Notifications.Add(new Notification
                 {
-                    RecipientUserId = sdaId,
+                    RecipientUserId = s.Id,
                     SenderType = "system",
-                    Message = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"",
+                    Message = msgAdmin,
                     Type = "urgent_solution",
                     ReferenceId = reportId,
                     CreatedAt = DateTime.UtcNow
                 });
+                await _fcm.SendAsync(s.FcmToken, "Permintaan Solusi Urgent", msgAdmin, "urgent_solution", reportId, ct);
             }
         }
 

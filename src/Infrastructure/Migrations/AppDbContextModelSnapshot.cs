@@ -177,6 +177,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("full_name");
 
+                    b.Property<string>("FcmToken")
+                        .HasColumnType("text")
+                        .HasColumnName("fcm_token");
+
                     b.Property<bool>("EnableUrgensi")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

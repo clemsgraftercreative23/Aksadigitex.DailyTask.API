@@ -1,3 +1,4 @@
+using API.Services;
 using API.Users;
 using Domain;
 using FastEndpoints;
@@ -21,7 +22,8 @@ public class RemindAllRequest
 public class RemindSingleEndpoint : Endpoint<RemindRequest>
 {
     private readonly AppDbContext _db;
-    public RemindSingleEndpoint(AppDbContext db) => _db = db;
+    private readonly IFirebasePushService _fcm;
+    public RemindSingleEndpoint(AppDbContext db, IFirebasePushService fcm) { _db = db; _fcm = fcm; }
 
     public override void Configure()
     {
@@ -83,6 +85,9 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
         });
         await _db.SaveChangesAsync(ct);
 
+        var fcmToken = target.FcmToken;
+        await _fcm.SendAsync(fcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
+
         await SendAsync(new { success = true, message = "Pengingat berhasil dikirim." }, cancellation: ct);
     }
 }
@@ -90,7 +95,8 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
 public class RemindAllEndpoint : Endpoint<RemindAllRequest>
 {
     private readonly AppDbContext _db;
-    public RemindAllEndpoint(AppDbContext db) => _db = db;
+    private readonly IFirebasePushService _fcm;
+    public RemindAllEndpoint(AppDbContext db, IFirebasePushService fcm) { _db = db; _fcm = fcm; }
 
     public override void Configure()
     {
@@ -131,7 +137,8 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
         else if (roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin)
             verifyQuery = verifyQuery.Where(u => u.CompanyId == currentUser.CompanyId);
 
-        var validIds = await verifyQuery.Select(u => u.Id).ToListAsync(ct);
+        var validUsers = await verifyQuery.Select(u => new { u.Id, u.FcmToken }).ToListAsync(ct);
+        var validIds = validUsers.Select(u => u.Id).ToList();
         if (validIds.Count == 0)
         {
             await SendAsync(new { success = false, message = "Tidak ada personil valid yang bisa diingatkan." }, 400, ct);
@@ -141,17 +148,18 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
         var date = string.IsNullOrWhiteSpace(req.Date) ? DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd") : req.Date;
         var message = $"ALERT: kamu belum ada input laporan kerja untuk tanggal {date}. Mohon segera diisi.";
 
-        foreach (var targetId in validIds)
+        foreach (var u in validUsers)
         {
             _db.Notifications.Add(new Domain.Notification
             {
-                RecipientUserId = targetId,
+                RecipientUserId = u.Id,
                 SenderType = "admin",
                 Message = message,
                 Type = "belum_lapor",
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow,
             });
+            await _fcm.SendAsync(u.FcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
         }
         await _db.SaveChangesAsync(ct);
 

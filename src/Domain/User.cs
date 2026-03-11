@@ -66,5 +66,8 @@ public class User {
     [Column("enable_urgensi")]
     public bool EnableUrgensi { get; set; } = true;
 
+    [Column("fcm_token")]
+    public string? FcmToken { get; set; }
+
     public Role? RoleRef { get; set; }
 }
