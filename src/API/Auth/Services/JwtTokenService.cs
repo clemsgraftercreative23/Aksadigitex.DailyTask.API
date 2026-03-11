@@ -19,7 +19,10 @@ public class JwtTokenService
     public (string AccessToken, DateTime ExpiresAtUtc) CreateAccessToken(int userId, string email, UserRole role = UserRole.User)
     {
         var now = DateTime.UtcNow;
-        var expiresAt = now.AddMinutes(_jwtOptions.AccessTokenMinutes);
+        // AccessTokenMinutes=0 => nonaktifkan fitur session (token tidak pernah expired)
+        var expiresAt = _jwtOptions.AccessTokenMinutes > 0
+            ? now.AddMinutes(_jwtOptions.AccessTokenMinutes)
+            : now.AddYears(10);
 
         var claims = new[]
         {
