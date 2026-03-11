@@ -326,7 +326,7 @@ public class ReportStore
         return true;
     }
 
-    public async Task<DailyReport?> SetRatingAsync(int id, int issueRating, int solutionRating)
+    public async Task<DailyReport?> SetRatingAsync(int id, int? issueRating, int? solutionRating)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
         if (report is null)

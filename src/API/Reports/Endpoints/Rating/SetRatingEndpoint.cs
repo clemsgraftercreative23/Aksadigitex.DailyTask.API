@@ -37,9 +37,10 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
             return;
 
         // Validasi rating value
-        if (req.IssueRating < 1 || req.IssueRating > 5 || req.SolutionRating < 1 || req.SolutionRating > 5)
+        if ((req.IssueRating.HasValue && (req.IssueRating < 1 || req.IssueRating > 5)) || 
+            (req.SolutionRating.HasValue && (req.SolutionRating < 1 || req.SolutionRating > 5)))
         {
-            AddError("Ratings must be between 1 and 5.");
+            AddError("Ratings must be between 1 and 5 when provided.");
             await SendErrorsAsync(cancellation: ct);
             return;
         }

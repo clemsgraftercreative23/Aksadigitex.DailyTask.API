@@ -25,8 +25,8 @@ public class RejectReportRequest
 
 public class SetRatingRequest
 {
-    public int IssueRating { get; set; } // 1-5 rating masalah
-    public int SolutionRating { get; set; } // 1-5 rating solusi
+    public int? IssueRating { get; set; } // 1-5 rating masalah, null jika belum dinilai
+    public int? SolutionRating { get; set; } // 1-5 rating solusi, null jika belum dinilai
 }
 
 /// <summary>
