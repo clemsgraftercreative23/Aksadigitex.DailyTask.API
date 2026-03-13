@@ -22,13 +22,14 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
         Summary(s =>
         {
             s.Summary = "Create daily report";
-            s.Description = "Creates a new daily report with pending status. Only User role can create reports.";
+            s.Description = "Creates a new daily report with pending status. Allowed roles: User, AdminDivisi, SuperAdmin, SuperDuperAdmin.";
         });
     }
 
     // Per about.md §4.2: user, admin_divisi bisa buat report
+    // SuperAdmin dan SuperDuperAdmin juga diizinkan untuk membuat report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.User, UserRole.AdminDivisi };
+        new[] { UserRole.User, UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(CreateReportRequest req, CancellationToken ct)
     {

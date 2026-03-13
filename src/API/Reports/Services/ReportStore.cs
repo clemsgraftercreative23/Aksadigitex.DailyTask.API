@@ -332,8 +332,13 @@ public class ReportStore
         if (report is null)
             return null;
 
-        report.IssueRating = issueRating;
-        report.SolutionRating = solutionRating;
+        // Hanya update field yang tidak null (partial update)
+        if (issueRating.HasValue)
+            report.IssueRating = issueRating.Value;
+        
+        if (solutionRating.HasValue)
+            report.SolutionRating = solutionRating.Value;
+        
         _context.DailyReports.Update(report);
         await _context.SaveChangesAsync();
         return report;

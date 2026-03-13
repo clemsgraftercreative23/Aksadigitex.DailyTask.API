@@ -1,9 +1,11 @@
+using API.Auth;
 using API.Reports;
 using Domain;
 using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace API.Reports.Endpoints;
 
@@ -18,7 +20,7 @@ public class UpdateReportRequest
     public TimeOnly? ReportTime { get; set; }
 }
 
-public class UpdateReportEndpoint : Endpoint<UpdateReportRequest, UpdateReportStatusResponse>
+public class UpdateReportEndpoint : RoleAuthorizedEndpoint<UpdateReportRequest, UpdateReportStatusResponse>
 {
     private readonly AppDbContext _db;
     public UpdateReportEndpoint(AppDbContext db) => _db = db;
@@ -30,10 +32,24 @@ public class UpdateReportEndpoint : Endpoint<UpdateReportRequest, UpdateReportSt
         Description(d => d.WithTags("Reports"));
     }
 
+    // Izinkan User, AdminDivisi, SuperAdmin, dan SuperDuperAdmin untuk update report
+    protected override UserRole[] GetAllowedRoles() =>
+        new[] { UserRole.User, UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+
     public override async Task HandleAsync(UpdateReportRequest req, CancellationToken ct)
     {
+        // Validasi role terlebih dahulu
+        if (!await ValidateRoleAsync(ct))
+            return;
+
         var userId = User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+        // Ambil role dari token untuk menentukan apakah user bisa edit report milik orang lain
+        var roleClaim = HttpContext.User.Claims
+            .FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        
+        Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var userRole);
 
         var report = await _db.DailyReports
             .Include(r => r.Attachments)
@@ -41,7 +57,10 @@ public class UpdateReportEndpoint : Endpoint<UpdateReportRequest, UpdateReportSt
 
         if (report is null) { await SendNotFoundAsync(ct); return; }
 
-        if (report.UserId != userId.Value)
+        // User biasa hanya bisa edit report milik sendiri
+        // AdminDivisi, SuperAdmin, dan SuperDuperAdmin bisa edit report milik mereka sendiri
+        // (Untuk edit report milik orang lain, gunakan endpoint khusus admin)
+        if (report.UserId != userId.Value && userRole == UserRole.User)
         {
             HttpContext.Response.StatusCode = 403;
             await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya pemilik yang bisa mengedit" }, ct);

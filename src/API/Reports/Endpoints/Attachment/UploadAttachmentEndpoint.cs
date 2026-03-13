@@ -25,13 +25,13 @@ public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentR
         Summary(s =>
         {
             s.Summary = "Upload attachment";
-            s.Description = "Uploads an attachment for a report. Only User role can upload.";
+            s.Description = "Uploads an attachment for a report. Allowed roles: User, AdminDivisi, SuperAdmin, SuperDuperAdmin.";
         });
     }
 
-    // Hanya user dengan role User yang bisa upload attachment
+    // Izinkan User, AdminDivisi, SuperAdmin, dan SuperDuperAdmin untuk upload attachment
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.User };
+        new[] { UserRole.User, UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(UploadAttachmentRequest req, CancellationToken ct)
     {

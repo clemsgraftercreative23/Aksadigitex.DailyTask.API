@@ -22,12 +22,13 @@ public class SubmitReportEndpoint : RoleAuthorizedEndpointWithoutRequest<UpdateR
         Summary(s =>
         {
             s.Summary = "Submit draft report";
-            s.Description = "Changes a draft report status to submitted. Only the report owner (User role) can submit.";
+            s.Description = "Changes a draft report status to submitted. Allowed roles: User, AdminDivisi, SuperAdmin, SuperDuperAdmin.";
         });
     }
 
+    // Izinkan User, AdminDivisi, SuperAdmin, dan SuperDuperAdmin untuk submit report
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.User };
+        new[] { UserRole.User, UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
 
     public override async Task HandleAsync(CancellationToken ct)
     {
