@@ -58,7 +58,8 @@ public class SubmitReportEndpoint : RoleAuthorizedEndpointWithoutRequest<UpdateR
             return;
         }
 
-        if (existing.Status != null && existing.Status != "draft")
+        var status = (existing.Status ?? "").ToLowerInvariant();
+        if (status != "draft" && status != "rejected")
         {
             AddError($"Laporan tidak bisa dikirim karena status saat ini '{existing.Status}'.");
             await SendErrorsAsync(cancellation: ct);

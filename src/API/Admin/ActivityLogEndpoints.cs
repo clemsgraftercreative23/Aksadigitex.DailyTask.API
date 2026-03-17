@@ -65,7 +65,10 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
         var usersQuery = _db.Users.AsNoTracking().Where(u => u.IsActive && u.RoleId <= (int)UserRole.AdminDivisi);
 
         if (roleName == "admin_divisi" || currentUser.Role == UserRole.AdminDivisi)
-            usersQuery = usersQuery.Where(u => u.DepartmentId == currentUser.DepartmentId);
+        {
+            // admin_divisi: hanya bawahan (user) di departemen yang sama
+            usersQuery = usersQuery.Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User);
+        }
         else if (roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin)
             usersQuery = usersQuery.Where(u => u.CompanyId == currentUser.CompanyId);
 

@@ -106,8 +106,8 @@ public class ReportStore
         }
         // SuperDuperAdmin: no scope restriction
 
-        // Urgency rule (approve only): is_asked_director OR high value → only SDA
-        if (isApprove && reviewerRole != UserRole.SuperDuperAdmin)
+        // Urgency rule (approve only): is_asked_director OR high value → SuperAdmin atau SuperDuperAdmin
+        if (isApprove && reviewerRole != UserRole.SuperDuperAdmin && reviewerRole != UserRole.SuperAdmin)
         {
             var total = await GetReportTotalNominalAsync(reportId, ct);
             var (sdaMin, sdaMax) = await GetSdaThresholdRangeAsync(ct);
@@ -119,7 +119,7 @@ public class ReportStore
                 var msg = isHighValue
                     ? $"Nominal Rp {total:N0} melebihi batas"
                     : "Permintaan bantuan ke CEO";
-                return new ReviewCheckResult(false, $"Laporan Urgensi ({msg}) hanya dapat disetujui oleh Super Duper Admin.");
+                return new ReviewCheckResult(false, $"Laporan Urgensi ({msg}) hanya dapat disetujui oleh Super Admin atau Super Duper Admin.");
             }
         }
 

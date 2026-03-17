@@ -52,13 +52,19 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
         IQueryable<DailyReport> query = _db.DailyReports.AsNoTracking().Include(r => r.Attachments);
 
         // Role-based scoping per about.md
+        // admin_divisi: hanya laporan sendiri + laporan bawahan (user di departemen yang sama)
         if (role == UserRole.User)
         {
             query = query.Where(r => r.UserId == userId.Value);
         }
         else if (role == UserRole.AdminDivisi)
         {
-            query = query.Where(r => r.DepartmentId == currentUser.DepartmentId);
+            var subordinateUserIds = await _db.Users.AsNoTracking()
+                .Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+            var allowedUserIds = subordinateUserIds.Concat(new[] { userId!.Value }).Distinct().ToList();
+            query = query.Where(r => allowedUserIds.Contains(r.UserId));
         }
         else if (role == UserRole.SuperAdmin)
         {
@@ -68,7 +74,17 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
                 .ToListAsync(ct);
             query = query.Where(r => companyUserIds.Contains(r.UserId));
         }
-        // SuperDuperAdmin sees all
+        // SuperDuperAdmin sees all (scoped later for draft visibility)
+
+        // Visibility rule: laporan bawahan tidak boleh menampilkan status draft.
+        // Hanya pemilik laporan yang boleh melihat draft miliknya sendiri.
+        if (role is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin)
+        {
+            var currentUserId = userId!.Value;
+            query = query.Where(r =>
+                r.UserId == currentUserId ||
+                (r.Status == null || r.Status.ToLower() != "draft"));
+        }
 
         // Filters
         if (!string.IsNullOrWhiteSpace(status))

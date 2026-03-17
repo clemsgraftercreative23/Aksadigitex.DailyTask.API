@@ -74,8 +74,13 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
         }
         else if (role == UserRole.AdminDivisi)
         {
-            reportQuery = reportQuery.Where(r => r.DepartmentId == currentUser.DepartmentId);
-            userQuery = userQuery.Where(u => u.DepartmentId == currentUser.DepartmentId);
+            var subordinateUserIds = await _db.Users.AsNoTracking()
+                .Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+            var allowedUserIds = subordinateUserIds.Concat(new[] { userId!.Value }).Distinct().ToList();
+            reportQuery = reportQuery.Where(r => allowedUserIds.Contains(r.UserId));
+            userQuery = userQuery.Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User);
         }
         else if (role == UserRole.SuperAdmin)
         {

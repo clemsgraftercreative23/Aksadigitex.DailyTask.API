@@ -46,37 +46,18 @@ public class DeleteReportEndpoint : RoleAuthorizedEndpointWithoutRequest<object>
             return;
         }
 
-        // Check role to determine permissions
-        var roleClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
-        if (!Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var userRole))
+        // Semua role: hanya bisa hapus laporan sendiri, dan hanya status draft
+        if (report.UserId != userId.Value)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Role tidak valid." }, ct);
+            await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
             return;
         }
 
-        // Users can only delete their own draft reports
-        if (userRole == UserRole.User)
-        {
-            if (report.UserId != userId.Value)
-            {
-                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
-                return;
-            }
-
-            if (report.Status?.ToLowerInvariant() != "draft")
-            {
-                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan dengan status draft." }, ct);
-                return;
-            }
-        }
-        // Admins can delete any report
-        else if (userRole != UserRole.AdminDivisi && userRole != UserRole.SuperAdmin && userRole != UserRole.SuperDuperAdmin)
+        if (report.Status?.ToLowerInvariant() != "draft")
         {
             HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Akses ditolak: role Anda tidak diizinkan menghapus laporan." }, ct);
+            await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
             return;
         }
 
