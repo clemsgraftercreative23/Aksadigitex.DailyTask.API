@@ -5,6 +5,7 @@ using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace API.Admin;
 
@@ -23,7 +24,13 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
 {
     private readonly AppDbContext _db;
     private readonly IFirebasePushService _fcm;
-    public RemindSingleEndpoint(AppDbContext db, IFirebasePushService fcm) { _db = db; _fcm = fcm; }
+    private readonly ILogger<RemindSingleEndpoint> _logger;
+    public RemindSingleEndpoint(AppDbContext db, IFirebasePushService fcm, ILogger<RemindSingleEndpoint> logger)
+    {
+        _db = db;
+        _fcm = fcm;
+        _logger = logger;
+    }
 
     public override void Configure()
     {
@@ -74,21 +81,30 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
         var date = string.IsNullOrWhiteSpace(req.Date) ? DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd") : req.Date;
         var message = $"ALERT: kamu belum ada input laporan kerja untuk tanggal {date}. Mohon segera diisi.";
 
-        _db.Notifications.Add(new Domain.Notification
+        try
         {
-            RecipientUserId = targetUserId,
-            SenderType = "admin",
-            Message = message,
-            Type = "belum_lapor",
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow,
-        });
-        await _db.SaveChangesAsync(ct);
+            _db.Notifications.Add(new Domain.Notification
+            {
+                RecipientUserId = targetUserId,
+                SenderType = "admin",
+                Message = message,
+                Type = "belum_lapor",
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
 
-        var fcmToken = target.FcmToken;
-        await _fcm.SendAsync(fcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
+            var fcmToken = target.FcmToken;
+            await _fcm.SendAsync(fcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
 
-        await SendAsync(new { success = true, message = "Pengingat berhasil dikirim." }, cancellation: ct);
+            await SendAsync(new { success = true, message = "Pengingat berhasil dikirim." }, cancellation: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RemindSingleEndpoint failed. targetUserId={TargetUserId}, date={Date}",
+                targetUserId, date);
+            await SendAsync(new { success = false, message = "Pengingat gagal dikirim. Coba lagi." }, cancellation: ct);
+        }
     }
 }
 
@@ -96,7 +112,13 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
 {
     private readonly AppDbContext _db;
     private readonly IFirebasePushService _fcm;
-    public RemindAllEndpoint(AppDbContext db, IFirebasePushService fcm) { _db = db; _fcm = fcm; }
+    private readonly ILogger<RemindAllEndpoint> _logger;
+    public RemindAllEndpoint(AppDbContext db, IFirebasePushService fcm, ILogger<RemindAllEndpoint> logger)
+    {
+        _db = db;
+        _fcm = fcm;
+        _logger = logger;
+    }
 
     public override void Configure()
     {
@@ -148,21 +170,30 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
         var date = string.IsNullOrWhiteSpace(req.Date) ? DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd") : req.Date;
         var message = $"ALERT: kamu belum ada input laporan kerja untuk tanggal {date}. Mohon segera diisi.";
 
-        foreach (var u in validUsers)
+        try
         {
-            _db.Notifications.Add(new Domain.Notification
+            foreach (var u in validUsers)
             {
-                RecipientUserId = u.Id,
-                SenderType = "admin",
-                Message = message,
-                Type = "belum_lapor",
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-            });
-            await _fcm.SendAsync(u.FcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
-        }
-        await _db.SaveChangesAsync(ct);
+                _db.Notifications.Add(new Domain.Notification
+                {
+                    RecipientUserId = u.Id,
+                    SenderType = "admin",
+                    Message = message,
+                    Type = "belum_lapor",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow,
+                });
+                await _fcm.SendAsync(u.FcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
+            }
+            await _db.SaveChangesAsync(ct);
 
-        await SendAsync(new { success = true, message = $"{validIds.Count} personil telah diingatkan." }, cancellation: ct);
+            await SendAsync(new { success = true, message = $"{validIds.Count} personil telah diingatkan." }, cancellation: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RemindAllEndpoint failed. currentUserId={CurrentUserId}, date={Date}, targetCount={TargetCount}",
+                currentUserId, date, validIds.Count);
+            await SendAsync(new { success = false, message = "Pengingat gagal dikirim. Coba lagi." }, cancellation: ct);
+        }
     }
 }

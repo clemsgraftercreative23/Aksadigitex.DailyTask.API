@@ -6,6 +6,7 @@ using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Dapper;
 using API.Services;
+using Microsoft.Extensions.Logging;
 
 namespace API.Reports;
 
@@ -18,11 +19,13 @@ public class ReportStore
 {
     private readonly AppDbContext _context;
     private readonly IFirebasePushService _fcm;
+    private readonly ILogger<ReportStore> _logger;
 
-    public ReportStore(AppDbContext context, IFirebasePushService fcm)
+    public ReportStore(AppDbContext context, IFirebasePushService fcm, ILogger<ReportStore> logger)
     {
         _context = context;
         _fcm = fcm;
+        _logger = logger;
     }
 
     /// <summary>
@@ -146,7 +149,19 @@ public class ReportStore
         _context.DailyReports.Add(report);
         await _context.SaveChangesAsync(ct);
         if (normalizedStatus == "submitted")
-            await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
+        {
+            try
+            {
+                await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
+            }
+            catch (Exception ex)
+            {
+                // Best practice: side-effect failure must not break the main request.
+                _logger.LogError(ex,
+                    "NotifySuperiorOnReportSubmittedAsync failed for reportId={ReportId}, creatorUserId={CreatorUserId}",
+                    report.Id, report.UserId);
+            }
+        }
         return report;
     }
 
@@ -157,7 +172,16 @@ public class ReportStore
         report.Status = "submitted";
         _context.DailyReports.Update(report);
         await _context.SaveChangesAsync(ct);
-        await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
+        try
+        {
+            await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "NotifySuperiorOnReportSubmittedAsync failed for submit reportId={ReportId}, creatorUserId={CreatorUserId}",
+                report.Id, report.UserId);
+        }
         return report;
     }
 
@@ -166,86 +190,96 @@ public class ReportStore
     /// </summary>
     private async Task NotifySuperiorOnReportSubmittedAsync(int reportId, int creatorUserId, CancellationToken ct = default)
     {
-        var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, ct);
-        if (creator is null) return;
-
-        var creatorName = creator.FullName ?? creator.Email ?? "User";
-        var issueText = ""; // Will be populated from report
-        var report = await _context.DailyReports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reportId, ct);
-        if (report != null)
+        try
         {
-            issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 60
-                ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 60) + "..."
-                : (report.Issue ?? report.TaskDescription ?? "");
-        }
+            var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, ct);
+            if (creator is null) return;
 
-        var msg = $"Laporan baru dari {creatorName}: \"{issueText}\"";
-        var title = "LKH Baru Dikirim";
-        var type = "laporan_submitted";
-
-        if (creator.Role == UserRole.User)
-        {
-            var admins = await _context.Users.AsNoTracking()
-                .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == creator.DepartmentId && u.CompanyId == creator.CompanyId && u.IsActive)
-                .Select(u => new { u.Id, u.FcmToken })
-                .ToListAsync(ct);
-            foreach (var a in admins)
+            var creatorName = creator.FullName ?? creator.Email ?? "User";
+            var issueText = ""; // Will be populated from report
+            var report = await _context.DailyReports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reportId, ct);
+            if (report != null)
             {
-                _context.Notifications.Add(new Notification
-                {
-                    RecipientUserId = a.Id,
-                    SenderType = "system",
-                    Message = msg,
-                    Type = type,
-                    ReferenceId = reportId,
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _fcm.SendAsync(a.FcmToken, title, msg, type, reportId, ct);
+                issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 60
+                    ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 60) + "..."
+                    : (report.Issue ?? report.TaskDescription ?? "");
             }
-        }
-        else if (creator.Role == UserRole.AdminDivisi)
-        {
-            var superAdmins = await _context.Users.AsNoTracking()
-                .Where(u => u.RoleId == (int)UserRole.SuperAdmin && u.CompanyId == creator.CompanyId && u.IsActive)
-                .Select(u => new { u.Id, u.FcmToken })
-                .ToListAsync(ct);
-            foreach (var sa in superAdmins)
-            {
-                _context.Notifications.Add(new Notification
-                {
-                    RecipientUserId = sa.Id,
-                    SenderType = "system",
-                    Message = msg,
-                    Type = type,
-                    ReferenceId = reportId,
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _fcm.SendAsync(sa.FcmToken, title, msg, type, reportId, ct);
-            }
-        }
-        else if (creator.Role == UserRole.SuperAdmin)
-        {
-            var sdas = await _context.Users.AsNoTracking()
-                .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
-                .Select(u => new { u.Id, u.FcmToken })
-                .ToListAsync(ct);
-            foreach (var s in sdas)
-            {
-                _context.Notifications.Add(new Notification
-                {
-                    RecipientUserId = s.Id,
-                    SenderType = "system",
-                    Message = msg,
-                    Type = type,
-                    ReferenceId = reportId,
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _fcm.SendAsync(s.FcmToken, title, msg, type, reportId, ct);
-            }
-        }
-        // SuperDuperAdmin: no superior to notify
 
-        await _context.SaveChangesAsync(ct);
+            var msg = $"Laporan baru dari {creatorName}: \"{issueText}\"";
+            var title = "LKH Baru Dikirim";
+            var type = "laporan_submitted";
+
+            if (creator.Role == UserRole.User)
+            {
+                var admins = await _context.Users.AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == creator.DepartmentId && u.CompanyId == creator.CompanyId && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+                foreach (var a in admins)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        RecipientUserId = a.Id,
+                        SenderType = "system",
+                        Message = msg,
+                        Type = type,
+                        ReferenceId = reportId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(a.FcmToken, title, msg, type, reportId, ct);
+                }
+            }
+            else if (creator.Role == UserRole.AdminDivisi)
+            {
+                var superAdmins = await _context.Users.AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.SuperAdmin && u.CompanyId == creator.CompanyId && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+                foreach (var sa in superAdmins)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        RecipientUserId = sa.Id,
+                        SenderType = "system",
+                        Message = msg,
+                        Type = type,
+                        ReferenceId = reportId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(sa.FcmToken, title, msg, type, reportId, ct);
+                }
+            }
+            else if (creator.Role == UserRole.SuperAdmin)
+            {
+                var sdas = await _context.Users.AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+                foreach (var s in sdas)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        RecipientUserId = s.Id,
+                        SenderType = "system",
+                        Message = msg,
+                        Type = type,
+                        ReferenceId = reportId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(s.FcmToken, title, msg, type, reportId, ct);
+                }
+            }
+            // SuperDuperAdmin: no superior to notify
+
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "NotifySuperiorOnReportSubmittedAsync failed. reportId={ReportId}, creatorUserId={CreatorUserId}",
+                reportId, creatorUserId);
+            // swallow: report creation/submit must succeed even if notifications fail.
+        }
     }
 
     public async Task<DailyReport?> GetByIdAsync(int id)
@@ -279,19 +313,39 @@ public class ReportStore
         report.ManagerNote = note;
         _context.DailyReports.Update(report);
 
-        var notif = new Notification
-        {
-            RecipientUserId = report.UserId,
-            SenderType = "system",
-            Message = $"Laporan Anda telah disetujui (Approved) oleh {reviewerName}.",
-            Type = "laporan_diapprove",
-            ReferenceId = id,
-            CreatedAt = DateTime.UtcNow
-        };
-        _context.Notifications.Add(notif);
+        // First commit the main state change so approval does not fail if notification insert fails.
         await _context.SaveChangesAsync(ct);
-        var recipient = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
-        await _fcm.SendAsync(recipient, "Laporan Disetujui", notif.Message, notif.Type ?? "laporan_diapprove", id, ct);
+
+        try
+        {
+            var notif = new Notification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = $"Laporan Anda telah disetujui (Approved) oleh {reviewerName}.",
+                Type = "laporan_diapprove",
+                ReferenceId = id,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Notifications.Add(notif);
+            await _context.SaveChangesAsync(ct);
+
+            var recipient = await _context.Users.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipient,
+                "Laporan Disetujui",
+                notif.Message,
+                notif.Type ?? "laporan_diapprove",
+                id,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ApproveAsync notification/FCM failed. reportId={ReportId}, reviewerName={ReviewerName}", id, reviewerName);
+        }
+
         return report;
     }
 
@@ -304,19 +358,38 @@ public class ReportStore
         report.ManagerNote = reason;
         _context.DailyReports.Update(report);
 
-        var notif = new Notification
-        {
-            RecipientUserId = report.UserId,
-            SenderType = "system",
-            Message = $"Laporan Anda ditolak/perlu revisi. Catatan: {reason}",
-            Type = "laporan_direview",
-            ReferenceId = id,
-            CreatedAt = DateTime.UtcNow
-        };
-        _context.Notifications.Add(notif);
         await _context.SaveChangesAsync(ct);
-        var recipientReject = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
-        await _fcm.SendAsync(recipientReject, "Laporan Ditolak", notif.Message, notif.Type ?? "laporan_direview", id, ct);
+
+        try
+        {
+            var notif = new Notification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = $"Laporan Anda ditolak/perlu revisi. Catatan: {reason}",
+                Type = "laporan_direview",
+                ReferenceId = id,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Notifications.Add(notif);
+            await _context.SaveChangesAsync(ct);
+
+            var recipientReject = await _context.Users.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipientReject,
+                "Laporan Ditolak",
+                notif.Message,
+                notif.Type ?? "laporan_direview",
+                id,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RejectAsync notification/FCM failed. reportId={ReportId}", id);
+        }
+
         return report;
     }
 
@@ -332,19 +405,38 @@ public class ReportStore
         report.ManagerNote = managerNote ?? report.ManagerNote;
         _context.DailyReports.Update(report);
 
-        var notif = new Notification
-        {
-            RecipientUserId = report.UserId,
-            SenderType = "system",
-            Message = "SDA telah memberikan solusi untuk laporan Anda.",
-            Type = "solution_ready",
-            ReferenceId = reportId,
-            CreatedAt = DateTime.UtcNow
-        };
-        _context.Notifications.Add(notif);
         await _context.SaveChangesAsync(ct);
-        var recipientSolution = await _context.Users.AsNoTracking().Where(u => u.Id == report.UserId).Select(u => u.FcmToken).FirstOrDefaultAsync(ct);
-        await _fcm.SendAsync(recipientSolution, "Solusi Tersedia", notif.Message, notif.Type ?? "solution_ready", reportId, ct);
+
+        try
+        {
+            var notif = new Notification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = "SDA telah memberikan solusi untuk laporan Anda.",
+                Type = "solution_ready",
+                ReferenceId = reportId,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Notifications.Add(notif);
+            await _context.SaveChangesAsync(ct);
+
+            var recipientSolution = await _context.Users.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipientSolution,
+                "Solusi Tersedia",
+                notif.Message,
+                notif.Type ?? "solution_ready",
+                reportId,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GiveSolutionAsync notification/FCM failed. reportId={ReportId}", reportId);
+        }
+
         return report;
     }
 
@@ -356,63 +448,93 @@ public class ReportStore
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == reportId, ct);
         if (report is null) return false;
 
-        report.IsAskedDirector = true;
-        _context.DailyReports.Update(report);
-
-        var reportUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
-
-        var issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 80
-            ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 80) + "..."
-            : (report.Issue ?? report.TaskDescription ?? "");
-
-        var msgUser = $"🟡 [BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
-        var prefix = currentRole == UserRole.AdminDivisi ? "🔴 [URGENT] Admin " : "🔴 [URGENT] ";
-        var msgAdmin = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"";
-
-        if (currentRole == UserRole.User)
+        try
         {
-            var admins = await _context.Users
-                .AsNoTracking()
-                .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == departmentId && u.CompanyId == companyId && u.IsActive)
-                .Select(u => new { u.Id, u.FcmToken })
-                .ToListAsync(ct);
-            foreach (var a in admins)
-            {
-                _context.Notifications.Add(new Notification
-                {
-                    RecipientUserId = a.Id,
-                    SenderType = "system",
-                    Message = msgUser,
-                    Type = "urgent_solution",
-                    ReferenceId = reportId,
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _fcm.SendAsync(a.FcmToken, "Permintaan Bantuan", msgUser, "urgent_solution", reportId, ct);
-            }
+            report.IsAskedDirector = true;
+            _context.DailyReports.Update(report);
+            await _context.SaveChangesAsync(ct);
         }
-        else
+        catch (Exception ex)
         {
-            var sdas = await _context.Users
-                .AsNoTracking()
-                .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
-                .Select(u => new { u.Id, u.FcmToken })
-                .ToListAsync(ct);
-            foreach (var s in sdas)
-            {
-                _context.Notifications.Add(new Notification
-                {
-                    RecipientUserId = s.Id,
-                    SenderType = "system",
-                    Message = msgAdmin,
-                    Type = "urgent_solution",
-                    ReferenceId = reportId,
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _fcm.SendAsync(s.FcmToken, "Permintaan Solusi Urgent", msgAdmin, "urgent_solution", reportId, ct);
-            }
+            _logger.LogError(ex, "AskDirectorAsync failed to update report.IsAskedDirector. reportId={ReportId}", reportId);
+            return false;
         }
 
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            var reportUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+
+            var issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 80
+                ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 80) + "..."
+                : (report.Issue ?? report.TaskDescription ?? "");
+
+            var msgUser = $"🟡 [BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
+            var prefix = currentRole == UserRole.AdminDivisi ? "🔴 [URGENT] Admin " : "🔴 [URGENT] ";
+            var msgAdmin = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"";
+
+            if (currentRole == UserRole.User)
+            {
+                var admins = await _context.Users
+                    .AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == departmentId && u.CompanyId == companyId && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+
+                foreach (var a in admins)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        RecipientUserId = a.Id,
+                        SenderType = "system",
+                        Message = msgUser,
+                        Type = "urgent_solution",
+                        ReferenceId = reportId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(a.FcmToken,
+                        "Permintaan Bantuan",
+                        msgUser,
+                        "urgent_solution",
+                        reportId,
+                        ct);
+                }
+            }
+            else
+            {
+                var sdas = await _context.Users
+                    .AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+
+                foreach (var s in sdas)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        RecipientUserId = s.Id,
+                        SenderType = "system",
+                        Message = msgAdmin,
+                        Type = "urgent_solution",
+                        ReferenceId = reportId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(s.FcmToken,
+                        "Permintaan Solusi Urgent",
+                        msgAdmin,
+                        "urgent_solution",
+                        reportId,
+                        ct);
+                }
+            }
+
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AskDirectorAsync notification/FCM failed. reportId={ReportId}", reportId);
+            // The main state change is already saved; notification errors must not break the request.
+        }
+
         return true;
     }
 
