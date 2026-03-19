@@ -23,13 +23,13 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
         Summary(s =>
         {
             s.Summary = "Set report ratings";
-            s.Description = "Sets issue and solution ratings (1-5). AdminDivisi, SuperAdmin, SuperDuperAdmin can rate subordinates only (not own report).";
+            s.Description = "Sets issue and solution ratings (1-5). SuperDuperAdmin (CEO) only.";
         });
     }
 
-    // admin_divisi, superadmin, superduperadmin boleh memberi rating (ke bawahan saja)
+    // Hanya SuperDuperAdmin (CEO) yang boleh memberi rating
     protected override UserRole[] GetAllowedRoles() =>
-        new[] { UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+        new[] { UserRole.SuperDuperAdmin };
 
     /// <summary>Hierarchy: reviewer must be superior to report creator. user &lt; admin_divisi &lt; super_admin &lt; super_duper_admin</summary>
     private static bool CanRateByHierarchy(UserRole reviewerRole, UserRole creatorRole) =>

@@ -126,7 +126,7 @@ public class ReportStore
         return new ReviewCheckResult(true, null);
     }
 
-    public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result, string status = "draft", int? departmentId = null)
+    public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result, string status = "draft", int? departmentId = null, CancellationToken ct = default)
     {
         var normalizedStatus = status?.ToLowerInvariant() == "submitted" ? "submitted" : "draft";
         var report = new DailyReport
@@ -144,18 +144,108 @@ public class ReportStore
         };
 
         _context.DailyReports.Add(report);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
+        if (normalizedStatus == "submitted")
+            await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
         return report;
     }
 
-    public async Task<DailyReport?> SubmitAsync(int id, int userId)
+    public async Task<DailyReport?> SubmitAsync(int id, int userId, CancellationToken ct = default)
     {
-        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+        var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId, ct);
         if (report is null) return null;
         report.Status = "submitted";
         _context.DailyReports.Update(report);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
+        await NotifySuperiorOnReportSubmittedAsync(report.Id, report.UserId, ct);
         return report;
+    }
+
+    /// <summary>
+    /// Notify superior when report is submitted. User→admin_divisi, admin_divisi→super_admin, super_admin→super_duper_admin.
+    /// </summary>
+    private async Task NotifySuperiorOnReportSubmittedAsync(int reportId, int creatorUserId, CancellationToken ct = default)
+    {
+        var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, ct);
+        if (creator is null) return;
+
+        var creatorName = creator.FullName ?? creator.Email ?? "User";
+        var issueText = ""; // Will be populated from report
+        var report = await _context.DailyReports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reportId, ct);
+        if (report != null)
+        {
+            issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 60
+                ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 60) + "..."
+                : (report.Issue ?? report.TaskDescription ?? "");
+        }
+
+        var msg = $"Laporan baru dari {creatorName}: \"{issueText}\"";
+        var title = "LKH Baru Dikirim";
+        var type = "laporan_submitted";
+
+        if (creator.Role == UserRole.User)
+        {
+            var admins = await _context.Users.AsNoTracking()
+                .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.DepartmentId == creator.DepartmentId && u.CompanyId == creator.CompanyId && u.IsActive)
+                .Select(u => new { u.Id, u.FcmToken })
+                .ToListAsync(ct);
+            foreach (var a in admins)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    RecipientUserId = a.Id,
+                    SenderType = "system",
+                    Message = msg,
+                    Type = type,
+                    ReferenceId = reportId,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _fcm.SendAsync(a.FcmToken, title, msg, type, reportId, ct);
+            }
+        }
+        else if (creator.Role == UserRole.AdminDivisi)
+        {
+            var superAdmins = await _context.Users.AsNoTracking()
+                .Where(u => u.RoleId == (int)UserRole.SuperAdmin && u.CompanyId == creator.CompanyId && u.IsActive)
+                .Select(u => new { u.Id, u.FcmToken })
+                .ToListAsync(ct);
+            foreach (var sa in superAdmins)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    RecipientUserId = sa.Id,
+                    SenderType = "system",
+                    Message = msg,
+                    Type = type,
+                    ReferenceId = reportId,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _fcm.SendAsync(sa.FcmToken, title, msg, type, reportId, ct);
+            }
+        }
+        else if (creator.Role == UserRole.SuperAdmin)
+        {
+            var sdas = await _context.Users.AsNoTracking()
+                .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
+                .Select(u => new { u.Id, u.FcmToken })
+                .ToListAsync(ct);
+            foreach (var s in sdas)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    RecipientUserId = s.Id,
+                    SenderType = "system",
+                    Message = msg,
+                    Type = type,
+                    ReferenceId = reportId,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _fcm.SendAsync(s.FcmToken, title, msg, type, reportId, ct);
+            }
+        }
+        // SuperDuperAdmin: no superior to notify
+
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task<DailyReport?> GetByIdAsync(int id)
@@ -341,6 +431,23 @@ public class ReportStore
         
         _context.DailyReports.Update(report);
         await _context.SaveChangesAsync();
+        return report;
+    }
+
+    /// <summary>
+    /// Update manager note (catatan). CEO (SuperDuperAdmin) only.
+    /// </summary>
+    public async Task<DailyReport?> UpdateManagerNoteAsync(int reportId, string managerNote, CancellationToken ct = default)
+    {
+        var report = await _context.DailyReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null)
+            return null;
+
+        report.ManagerNote = managerNote;
+        _context.DailyReports.Update(report);
+        await _context.SaveChangesAsync(ct);
         return report;
     }
 

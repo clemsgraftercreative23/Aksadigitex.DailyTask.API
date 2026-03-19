@@ -66,7 +66,7 @@ public class SubmitReportEndpoint : RoleAuthorizedEndpointWithoutRequest<UpdateR
             return;
         }
 
-        var updated = await _store.SubmitAsync(reportId, userId.Value);
+        var updated = await _store.SubmitAsync(reportId, userId.Value, ct);
 
         await SendAsync(new UpdateReportStatusResponse
         {

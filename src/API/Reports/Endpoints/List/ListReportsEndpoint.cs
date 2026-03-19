@@ -68,11 +68,13 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
         }
         else if (role == UserRole.SuperAdmin)
         {
-            var companyUserIds = await _db.Users.AsNoTracking()
-                .Where(u => u.CompanyId == currentUser.CompanyId)
+            // Super Admin hanya melihat laporan admin_divisi + laporan sendiri (tidak termasuk laporan user)
+            var companyAdminDivisiUserIds = await _db.Users.AsNoTracking()
+                .Where(u => u.CompanyId == currentUser.CompanyId && u.RoleId == (int)UserRole.AdminDivisi)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
-            query = query.Where(r => companyUserIds.Contains(r.UserId));
+            var allowedUserIds = companyAdminDivisiUserIds.Concat(new[] { userId!.Value }).Distinct().ToList();
+            query = query.Where(r => allowedUserIds.Contains(r.UserId));
         }
         // SuperDuperAdmin sees all (scoped later for draft visibility)
 

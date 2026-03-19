@@ -81,7 +81,8 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             req.Solution.Trim(),
             req.Result.Trim(),
             req.Status,
-            deptId
+            deptId,
+            ct
         );
 
         await SendAsync(new CreateReportResponse
