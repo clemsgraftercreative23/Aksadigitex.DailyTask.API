@@ -29,6 +29,10 @@ public class DeleteReportEndpoint : RoleAuthorizedEndpointWithoutRequest<object>
     {
         var reportId = Route<int>("id");
         var userId = User.GetUserId();
+        var roleClaim = HttpContext.User.Claims
+            .FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        var isSuperDuperAdmin = Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var userRole)
+                                && userRole == UserRole.SuperDuperAdmin;
 
         if (!userId.HasValue)
         {
@@ -46,19 +50,23 @@ public class DeleteReportEndpoint : RoleAuthorizedEndpointWithoutRequest<object>
             return;
         }
 
-        // Semua role: hanya bisa hapus laporan sendiri, dan hanya status draft
-        if (report.UserId != userId.Value)
+        // Semua role: hanya bisa hapus laporan sendiri, dan hanya status draft.
+        // Khusus SuperDuperAdmin: boleh hapus laporan milik siapa pun dan untuk semua status.
+        if (!isSuperDuperAdmin)
         {
-            HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
-            return;
-        }
+            if (report.UserId != userId.Value)
+            {
+                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
+                return;
+            }
 
-        if (report.Status?.ToLowerInvariant() != "draft")
-        {
-            HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
-            return;
+            if (report.Status?.ToLowerInvariant() != "draft")
+            {
+                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
+                return;
+            }
         }
 
         _db.DailyReportAttachments.RemoveRange(report.Attachments);
