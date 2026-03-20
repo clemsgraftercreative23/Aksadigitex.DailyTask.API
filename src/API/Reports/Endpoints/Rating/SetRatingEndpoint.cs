@@ -86,14 +86,6 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
             return;
         }
 
-        // Rating hanya boleh pada laporan yang sudah disetujui (approved)
-        var status = report.Status?.ToLowerInvariant() ?? "";
-        if (status != "approved")
-        {
-            await SendForbiddenAsync(ct, "Rating hanya dapat diberikan pada laporan yang sudah disetujui.");
-            return;
-        }
-
         var updated = await _store.SetRatingAsync(reportId, req.IssueRating, req.SolutionRating);
 
         await SendAsync(new UpdateReportStatusResponse
