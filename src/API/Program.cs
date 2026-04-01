@@ -28,10 +28,12 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<ReportApprovalOptions>(builder.Configuration.GetSection(ReportApprovalOptions.SectionName));
 builder.Services.Configure<FirebaseOptions>(builder.Configuration.GetSection(FirebaseOptions.SectionName));
+builder.Services.Configure<DailyReportReminderOptions>(builder.Configuration.GetSection(DailyReportReminderOptions.SectionName));
 builder.Services.AddSingleton<AuthSessionStore>();
 builder.Services.AddScoped<ReportStore>();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<IFirebasePushService, FirebasePushService>();
+builder.Services.AddHostedService<DailyTaskNotificationService>();
 
 // Initialize Firebase - when Enabled=true, file MUST exist, otherwise server will NOT start
 var firebaseSection = builder.Configuration.GetSection(FirebaseOptions.SectionName);
