@@ -24,7 +24,9 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
         Summary(s =>
         {
             s.Summary = "Get reports with pagination, filters, and role-based scoping";
-            s.Description = "Returns paginated daily reports filtered by role scope, status, date range, and search.";
+            s.Description =
+                "Returns paginated daily reports filtered by role scope, status, date range, and search. " +
+                "For Super Duper Admin only: rows are excluded if any of task (tugas), issue (masalah), solution (solusi), or result (hasil) is empty or whitespace.";
         });
     }
 
@@ -86,6 +88,16 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
             query = query.Where(r =>
                 r.UserId == currentUserId ||
                 (r.Status == null || r.Status.ToLower() != "draft"));
+        }
+
+        // Super Duper Admin: list hanya laporan dengan Tugas, Masalah, Solusi, Hasil terisi (bukan kosong / whitespace).
+        if (role == UserRole.SuperDuperAdmin)
+        {
+            query = query.Where(r =>
+                !string.IsNullOrWhiteSpace(r.TaskDescription) &&
+                !string.IsNullOrWhiteSpace(r.Issue) &&
+                !string.IsNullOrWhiteSpace(r.Solution) &&
+                !string.IsNullOrWhiteSpace(r.Result));
         }
 
         // Filters
