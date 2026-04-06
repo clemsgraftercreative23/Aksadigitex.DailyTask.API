@@ -8,6 +8,7 @@ using Google.Apis.Auth.OAuth2;
 using FastEndpoints.Swagger;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NSwag.Generation.Processors.Security;
@@ -102,6 +103,14 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// Di belakang reverse proxy: teruskan scheme/host asli (opsional).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new TimeOnlyJsonConverter());
@@ -121,6 +130,44 @@ builder.Services.SwaggerDocument(opt =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
+
+// PathBase publik, mis. /dailytasks → URL API: .../dailytasks/api/v1/...
+// Kosong = tidak ada subpath (swagger tetap di /swagger).
+var pathBaseRaw = app.Configuration["PathBase"]?.Trim();
+string? pathBase = string.IsNullOrEmpty(pathBaseRaw)
+    ? null
+    : (pathBaseRaw.StartsWith('/') ? pathBaseRaw : "/" + pathBaseRaw);
+
+// Tanpa ini, /swagger dan /api/... tetap bisa diakses di root — UsePathBase hanya mem-parse
+// request yang *sudah* ber-prefix. Redirect memaksa satu pintu masuk sesuai PathBase.
+if (!string.IsNullOrEmpty(pathBase))
+{
+    app.Use(async (ctx, next) =>
+    {
+        var path = ctx.Request.Path.Value ?? "";
+        if (path.StartsWith(pathBase, StringComparison.OrdinalIgnoreCase))
+        {
+            await next();
+            return;
+        }
+
+        if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(path, "/api", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(path, "/uploads", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.Redirect(pathBase + path + ctx.Request.QueryString);
+            return;
+        }
+
+        await next();
+    });
+
+    app.UsePathBase(pathBase);
+}
 
 // Serve uploaded report attachments
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
