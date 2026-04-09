@@ -40,7 +40,8 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
         if (!await ValidateRoleAsync(ct))
             return;
 
-        if ((req.IssueRating.HasValue && (req.IssueRating < 1 || req.IssueRating > 5)) ||
+        if ((req.TaskRating.HasValue && (req.TaskRating < 1 || req.TaskRating > 5)) ||
+            (req.IssueRating.HasValue && (req.IssueRating < 1 || req.IssueRating > 5)) ||
             (req.SolutionRating.HasValue && (req.SolutionRating < 1 || req.SolutionRating > 5)))
         {
             AddError("Ratings must be between 1 and 5 when provided.");
@@ -86,7 +87,7 @@ public class SetRatingEndpoint : RoleAuthorizedEndpoint<SetRatingRequest, Update
             return;
         }
 
-        var updated = await _store.SetRatingAsync(reportId, req.IssueRating, req.SolutionRating);
+        var updated = await _store.SetRatingAsync(reportId, req.TaskRating, req.IssueRating, req.SolutionRating);
 
         await SendAsync(new UpdateReportStatusResponse
         {

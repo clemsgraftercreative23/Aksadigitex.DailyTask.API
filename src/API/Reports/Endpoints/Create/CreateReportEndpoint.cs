@@ -55,12 +55,8 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             await SendErrorsAsync(cancellation: ct);
             return;
         }
-        if (string.IsNullOrWhiteSpace(req.Result))
-        {
-            AddError("Hasil (Result) wajib diisi.");
-            await SendErrorsAsync(cancellation: ct);
-            return;
-        }
+
+        var resultNormalized = string.IsNullOrWhiteSpace(req.Result) ? string.Empty : req.Result.Trim();
 
         var userId = User.GetUserId();
         if (!userId.HasValue)
@@ -79,7 +75,7 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             req.TaskDescription.Trim(),
             req.Issue.Trim(),
             req.Solution.Trim(),
-            req.Result.Trim(),
+            resultNormalized,
             req.Status,
             deptId,
             ct

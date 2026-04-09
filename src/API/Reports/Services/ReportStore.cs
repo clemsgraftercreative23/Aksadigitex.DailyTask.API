@@ -538,13 +538,15 @@ public class ReportStore
         return true;
     }
 
-    public async Task<DailyReport?> SetRatingAsync(int id, int? issueRating, int? solutionRating)
+    public async Task<DailyReport?> SetRatingAsync(int id, int? taskRating, int? issueRating, int? solutionRating)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
         if (report is null)
             return null;
 
-        // Hanya update field yang tidak null (partial update)
+        if (taskRating.HasValue)
+            report.TaskRating = taskRating.Value;
+
         if (issueRating.HasValue)
             report.IssueRating = issueRating.Value;
         
@@ -611,6 +613,7 @@ public static class ReportMappingExtensions
             ManagerNote = report.ManagerNote,
             DirectorSolution = report.DirectorSolution,
             IsAskedDirector = report.IsAskedDirector,
+            TaskRating = report.TaskRating,
             IssueRating = report.IssueRating,
             SolutionRating = report.SolutionRating,
             CreatedAt = report.CreatedAt,

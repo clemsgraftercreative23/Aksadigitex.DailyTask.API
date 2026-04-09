@@ -9,6 +9,7 @@ public class CreateReportRequest
     public string TaskDescription { get; set; } = string.Empty;
     public string Issue { get; set; } = string.Empty;
     public string Solution { get; set; } = string.Empty;
+    /// <summary>Optional. Omitted or whitespace is stored as empty.</summary>
     public string Result { get; set; } = string.Empty;
     public string Status { get; set; } = "draft"; // "draft" or "submitted"
 }
@@ -25,6 +26,7 @@ public class RejectReportRequest
 
 public class SetRatingRequest
 {
+    public int? TaskRating { get; set; } // 1-5 rating rincian kegiatan, null jika belum dinilai
     public int? IssueRating { get; set; } // 1-5 rating masalah, null jika belum dinilai
     public int? SolutionRating { get; set; } // 1-5 rating solusi, null jika belum dinilai
 }
@@ -76,6 +78,7 @@ public class ReportItemResponse
     public string? ManagerNote { get; set; }
     public string? DirectorSolution { get; set; }
     public bool IsAskedDirector { get; set; }
+    public int? TaskRating { get; set; }
     public int? IssueRating { get; set; }
     public int? SolutionRating { get; set; }
     public DateTime CreatedAt { get; set; }

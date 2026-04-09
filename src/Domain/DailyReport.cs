@@ -52,6 +52,9 @@ public class DailyReport
     [Column("created_at")]
     public DateTime CreatedAt { get; set; }
 
+    [Column("task_rating")]
+    public int? TaskRating { get; set; } // 1-5 rating rincian kegiatan oleh SuperDuperAdmin
+
     [Column("issue_rating")]
     public int? IssueRating { get; set; } // 1-5 rating masalah oleh SuperDuperAdmin
 
