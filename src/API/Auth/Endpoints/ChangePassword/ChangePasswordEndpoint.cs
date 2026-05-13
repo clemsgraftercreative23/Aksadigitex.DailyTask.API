@@ -50,6 +50,29 @@ public class ChangePasswordEndpoint : Endpoint<ChangePasswordRequest>
             return;
         }
 
+        var accountType = User.GetAccountType();
+        if (accountType == AuthAccountType.DirectorUser)
+        {
+            var directorUser = await _db.DirectorUsers.FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            if (!PasswordVerifier.Verify(currentPassword, directorUser.PasswordHash))
+            {
+                await SendAsync(new { success = false, message = "Kata sandi lama salah." }, 400, ct);
+                return;
+            }
+
+            directorUser.PasswordHash = PasswordHasher.Hash(newPassword);
+            await _db.SaveChangesAsync(ct);
+
+            await SendAsync(new { success = true, message = "Kata sandi berhasil diubah." }, cancellation: ct);
+            return;
+        }
+
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
         if (user is null)
         {
