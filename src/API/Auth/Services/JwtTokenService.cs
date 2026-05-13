@@ -16,7 +16,11 @@ public class JwtTokenService
         _jwtOptions = jwtOptions.Value;
     }
 
-    public (string AccessToken, DateTime ExpiresAtUtc) CreateAccessToken(int userId, string email, UserRole role = UserRole.User)
+    public (string AccessToken, DateTime ExpiresAtUtc) CreateAccessToken(
+        int userId,
+        string email,
+        UserRole role = UserRole.User,
+        AuthAccountType accountType = AuthAccountType.User)
     {
         var now = DateTime.UtcNow;
         // AccessTokenMinutes=0 => nonaktifkan fitur session (token tidak pernah expired)
@@ -29,6 +33,7 @@ public class JwtTokenService
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, email),
             new Claim(ClaimTypes.Role, role.ToString()),
+            new Claim("account_type", accountType.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
 

@@ -25,4 +25,26 @@ public static class UserMappings
             EnableUrgensi = user.EnableUrgensi
         };
     }
+
+    public static UserItemResponse ToUserItemResponse(this DirectorUser user, string? roleName = null)
+    {
+        return new UserItemResponse
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            RoleId = user.RoleId,
+            RoleName = roleName ?? user.Role.ToString(),
+            Position = null,
+            CompanyId = user.CompanyId,
+            DepartmentId = null,
+            IsActive = user.IsActive,
+            CreatedAt = user.CreatedAt,
+            MfaEnabled = user.MfaEnabled,
+            NotifThresholdMin = user.NotifThresholdMin,
+            NotifThresholdMax = user.NotifThresholdMax,
+            UrgencyEmail = user.UrgencyEmail,
+            EnableUrgensi = user.EnableUrgensi
+        };
+    }
 }

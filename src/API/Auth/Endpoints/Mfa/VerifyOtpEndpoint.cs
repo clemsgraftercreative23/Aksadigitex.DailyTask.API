@@ -50,7 +50,7 @@ public class VerifyOtpEndpoint : Endpoint<VerifyOtpRequest, VerifyOtpResponse>
             return;
         }
 
-        var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email, user.Role);
+        var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email, user.Role, user.AccountType);
         var refresh = _sessionStore.CreateRefreshToken(user.Id, user.AccountType, _jwtOptions.RefreshTokenDays);
 
         await SendAsync(new VerifyOtpResponse

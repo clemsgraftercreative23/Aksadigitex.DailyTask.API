@@ -1,4 +1,5 @@
 #nullable enable
+using API.Auth;
 using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -34,6 +35,44 @@ public class GetProfileEndpoint : EndpointWithoutRequest<ProfileResponse>
         if (!userId.HasValue)
         {
             await SendUnauthorizedAsync(ct);
+            return;
+        }
+
+        var accountType = User.GetAccountType();
+        if (accountType == AuthAccountType.DirectorUser)
+        {
+            var directorUser = await _db.DirectorUsers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == userId.Value, ct);
+
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            var roleName = await _db.Roles
+                .AsNoTracking()
+                .Where(r => r.Id == directorUser.RoleId)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync(ct);
+
+            string? directorCompanyName = null;
+            if (directorUser.CompanyId.HasValue)
+            {
+                directorCompanyName = await _db.Companies
+                    .AsNoTracking()
+                    .Where(c => c.Id == directorUser.CompanyId.Value)
+                    .Select(c => c.CompanyName)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            await SendAsync(new ProfileResponse
+            {
+                Item = directorUser.ToUserItemResponse(roleName),
+                CompanyName = directorCompanyName,
+                DepartmentName = null,
+            }, cancellation: ct);
             return;
         }
 

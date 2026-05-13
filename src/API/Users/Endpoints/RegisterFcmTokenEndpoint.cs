@@ -1,4 +1,5 @@
 using FastEndpoints;
+using API.Auth;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,23 @@ public class RegisterFcmTokenEndpoint : Endpoint<RegisterFcmTokenRequest>
         if (string.IsNullOrEmpty(token))
         {
             await SendAsync(new { success = false, message = "Token tidak boleh kosong." }, 400, ct);
+            return;
+        }
+
+        var accountType = User.GetAccountType();
+        if (accountType == AuthAccountType.DirectorUser)
+        {
+            var directorUser = await _db.DirectorUsers.FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            directorUser.FcmToken = token;
+            await _db.SaveChangesAsync(ct);
+
+            await SendAsync(new { success = true, message = "FCM token berhasil disimpan." }, cancellation: ct);
             return;
         }
 
