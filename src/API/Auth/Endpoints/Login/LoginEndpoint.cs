@@ -1,26 +1,24 @@
 using FastEndpoints;
-using Infrastructure;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace API.Auth;
 
 public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
 {
-    private readonly AppDbContext _db;
+    private readonly AuthUserLookupService _userLookup;
     private readonly JwtTokenService _jwtTokenService;
     private readonly AuthSessionStore _sessionStore;
     private readonly JwtOptions _jwtOptions;
     private readonly ILogger<LoginEndpoint> _logger;
 
     public LoginEndpoint(
-        AppDbContext db,
+        AuthUserLookupService userLookup,
         JwtTokenService jwtTokenService,
         AuthSessionStore sessionStore,
         IOptions<JwtOptions> jwtOptions,
         ILogger<LoginEndpoint> logger)
     {
-        _db = db;
+        _userLookup = userLookup;
         _jwtTokenService = jwtTokenService;
         _sessionStore = sessionStore;
         _jwtOptions = jwtOptions.Value;
@@ -41,11 +39,9 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
 
     public override async Task HandleAsync(LoginRequest req, CancellationToken ct)
     {
-        var user = await _db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Email == req.Email && x.IsActive, ct);
+        var loginResult = await _userLookup.FindForLoginAsync(req.Email, req.Password, ct);
 
-        if (user is null)
+        if (loginResult.User is null && !loginResult.AccountExists)
         {
             HttpContext.Response.StatusCode = 401;
             await HttpContext.Response.WriteAsJsonAsync(new LoginErrorResponse
@@ -57,7 +53,7 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
             return;
         }
 
-        if (!PasswordVerifier.Verify(req.Password, user.PasswordHash))
+        if (loginResult.User is null)
         {
             HttpContext.Response.StatusCode = 401;
             await HttpContext.Response.WriteAsJsonAsync(new LoginErrorResponse
@@ -69,9 +65,11 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
             return;
         }
 
+        var user = loginResult.User;
+
         if (user.MfaEnabled == true)
         {
-            var challenge = _sessionStore.CreateMfaChallenge(user.Id, _jwtOptions.OtpMinutes);
+            var challenge = _sessionStore.CreateMfaChallenge(user.Id, user.AccountType, _jwtOptions.OtpMinutes);
 
             _logger.LogInformation(
                 "OTP code for user {UserId}: {OtpCode}. ChallengeToken: {ChallengeToken}",
@@ -90,7 +88,7 @@ public class LoginEndpoint : Endpoint<LoginRequest, LoginResponse>
         }
 
         var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email, user.Role);
-        var refresh = _sessionStore.CreateRefreshToken(user.Id, _jwtOptions.RefreshTokenDays);
+        var refresh = _sessionStore.CreateRefreshToken(user.Id, user.AccountType, _jwtOptions.RefreshTokenDays);
 
         await SendAsync(new LoginResponse
         {

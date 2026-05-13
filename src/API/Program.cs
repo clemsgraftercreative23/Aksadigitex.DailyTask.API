@@ -33,6 +33,7 @@ builder.Services.Configure<DailyReportReminderOptions>(builder.Configuration.Get
 builder.Services.AddSingleton<AuthSessionStore>();
 builder.Services.AddScoped<ReportStore>();
 builder.Services.AddScoped<JwtTokenService>();
+builder.Services.AddScoped<AuthUserLookupService>();
 builder.Services.AddScoped<IFirebasePushService, FirebasePushService>();
 builder.Services.AddHostedService<DailyTaskNotificationService>();
 

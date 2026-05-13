@@ -8,6 +8,7 @@ namespace Infrastructure;
 public class AppDbContext : DbContext {
     public AppDbContext(DbContextOptions<AppDbContext> opt) : base(opt){}
     public DbSet<User> Users => Set<User>();
+    public DbSet<DirectorUser> DirectorUsers => Set<DirectorUser>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<DailyReport> DailyReports => Set<DailyReport>();
     public DbSet<DailyReportAttachment> DailyReportAttachments => Set<DailyReportAttachment>();

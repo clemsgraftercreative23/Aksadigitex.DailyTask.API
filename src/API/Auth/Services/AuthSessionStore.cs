@@ -7,7 +7,7 @@ public class AuthSessionStore
     private readonly ConcurrentDictionary<string, PendingMfaChallenge> _mfaChallenges = new();
     private readonly ConcurrentDictionary<string, RefreshSession> _refreshSessions = new();
 
-    public (string ChallengeToken, string OtpCode, DateTime ExpiresAtUtc) CreateMfaChallenge(int userId, int otpMinutes)
+    public (string ChallengeToken, string OtpCode, DateTime ExpiresAtUtc) CreateMfaChallenge(int userId, AuthAccountType accountType, int otpMinutes)
     {
         var now = DateTime.UtcNow;
         var challengeToken = Guid.NewGuid().ToString("N");
@@ -15,15 +15,17 @@ public class AuthSessionStore
 
         _mfaChallenges[challengeToken] = new PendingMfaChallenge(
             UserId: userId,
+            AccountType: accountType,
             OtpCode: otpCode,
             ExpiresAtUtc: now.AddMinutes(otpMinutes));
 
         return (challengeToken, otpCode, now.AddMinutes(otpMinutes));
     }
 
-    public bool TryVerifyMfa(string challengeToken, string otpCode, out int userId)
+    public bool TryVerifyMfa(string challengeToken, string otpCode, out int userId, out AuthAccountType accountType)
     {
         userId = 0;
+        accountType = AuthAccountType.User;
 
         if (!_mfaChallenges.TryGetValue(challengeToken, out var challenge))
             return false;
@@ -39,22 +41,24 @@ public class AuthSessionStore
 
         _mfaChallenges.TryRemove(challengeToken, out _);
         userId = challenge.UserId;
+        accountType = challenge.AccountType;
         return true;
     }
 
-    public (string RefreshToken, DateTime ExpiresAtUtc) CreateRefreshToken(int userId, int refreshDays)
+    public (string RefreshToken, DateTime ExpiresAtUtc) CreateRefreshToken(int userId, AuthAccountType accountType, int refreshDays)
     {
         var now = DateTime.UtcNow;
         var refreshToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         var expiresAt = now.AddDays(refreshDays);
 
-        _refreshSessions[refreshToken] = new RefreshSession(userId, expiresAt);
+        _refreshSessions[refreshToken] = new RefreshSession(userId, accountType, expiresAt);
         return (refreshToken, expiresAt);
     }
 
-    public bool TryConsumeRefreshToken(string refreshToken, out int userId)
+    public bool TryConsumeRefreshToken(string refreshToken, out int userId, out AuthAccountType accountType)
     {
         userId = 0;
+        accountType = AuthAccountType.User;
 
         if (!_refreshSessions.TryRemove(refreshToken, out var session))
             return false;
@@ -63,10 +67,11 @@ public class AuthSessionStore
             return false;
 
         userId = session.UserId;
+        accountType = session.AccountType;
         return true;
     }
 
-    private sealed record PendingMfaChallenge(int UserId, string OtpCode, DateTime ExpiresAtUtc);
+    private sealed record PendingMfaChallenge(int UserId, AuthAccountType AccountType, string OtpCode, DateTime ExpiresAtUtc);
 
-    private sealed record RefreshSession(int UserId, DateTime ExpiresAtUtc);
+    private sealed record RefreshSession(int UserId, AuthAccountType AccountType, DateTime ExpiresAtUtc);
 }

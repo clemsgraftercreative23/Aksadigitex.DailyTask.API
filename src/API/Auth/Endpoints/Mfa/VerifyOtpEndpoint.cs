@@ -1,24 +1,22 @@
 using FastEndpoints;
-using Infrastructure;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace API.Auth;
 
 public class VerifyOtpEndpoint : Endpoint<VerifyOtpRequest, VerifyOtpResponse>
 {
-    private readonly AppDbContext _db;
+    private readonly AuthUserLookupService _userLookup;
     private readonly JwtTokenService _jwtTokenService;
     private readonly AuthSessionStore _sessionStore;
     private readonly JwtOptions _jwtOptions;
 
     public VerifyOtpEndpoint(
-        AppDbContext db,
+        AuthUserLookupService userLookup,
         JwtTokenService jwtTokenService,
         AuthSessionStore sessionStore,
         IOptions<JwtOptions> jwtOptions)
     {
-        _db = db;
+        _userLookup = userLookup;
         _jwtTokenService = jwtTokenService;
         _sessionStore = sessionStore;
         _jwtOptions = jwtOptions.Value;
@@ -38,15 +36,13 @@ public class VerifyOtpEndpoint : Endpoint<VerifyOtpRequest, VerifyOtpResponse>
 
     public override async Task HandleAsync(VerifyOtpRequest req, CancellationToken ct)
     {
-        if (!_sessionStore.TryVerifyMfa(req.ChallengeToken, req.OtpCode, out var userId))
+        if (!_sessionStore.TryVerifyMfa(req.ChallengeToken, req.OtpCode, out var userId, out var accountType))
         {
             await SendUnauthorizedAsync(ct);
             return;
         }
 
-        var user = await _db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == userId && x.IsActive, ct);
+        var user = await _userLookup.FindActiveByIdAsync(userId, accountType, ct);
 
         if (user is null)
         {
@@ -55,7 +51,7 @@ public class VerifyOtpEndpoint : Endpoint<VerifyOtpRequest, VerifyOtpResponse>
         }
 
         var access = _jwtTokenService.CreateAccessToken(user.Id, user.Email, user.Role);
-        var refresh = _sessionStore.CreateRefreshToken(user.Id, _jwtOptions.RefreshTokenDays);
+        var refresh = _sessionStore.CreateRefreshToken(user.Id, user.AccountType, _jwtOptions.RefreshTokenDays);
 
         await SendAsync(new VerifyOtpResponse
         {
