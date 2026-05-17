@@ -56,18 +56,36 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
         var currentUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
 
-        var role = currentUser.Role;
+        UserRole role;
+        int? currentDepartmentId;
+        int? currentCompanyId;
+
+        if (currentUser is not null)
+        {
+            role = currentUser.Role;
+            currentDepartmentId = currentUser.DepartmentId;
+            currentCompanyId = currentUser.CompanyId;
+        }
+        else
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            role = directorUser.Role;
+            currentDepartmentId = null;
+            currentCompanyId = directorUser.CompanyId;
+        }
+
         var search = Query<string?>("search", isRequired: false);
         var deptId = Query<int?>("departmentId", isRequired: false);
 
         var query = _db.Users.AsNoTracking().Where(u => u.IsActive);
 
         if (role == UserRole.AdminDivisi)
-            query = query.Where(u => u.DepartmentId == currentUser.DepartmentId);
+            query = query.Where(u => u.DepartmentId == currentDepartmentId);
         else if (role == UserRole.SuperAdmin)
-            query = query.Where(u => u.CompanyId == currentUser.CompanyId);
+            query = query.Where(u => u.CompanyId == currentCompanyId);
 
         if (deptId.HasValue)
             query = query.Where(u => u.DepartmentId == deptId.Value);

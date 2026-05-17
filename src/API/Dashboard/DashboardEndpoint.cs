@@ -58,9 +58,26 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
         var currentUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
 
-        var role = currentUser.Role;
+        UserRole role;
+        int? currentDepartmentId;
+        int? currentCompanyId;
+
+        if (currentUser is not null)
+        {
+            role = currentUser.Role;
+            currentDepartmentId = currentUser.DepartmentId;
+            currentCompanyId = currentUser.CompanyId;
+        }
+        else
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            role = directorUser.Role;
+            currentDepartmentId = null;
+            currentCompanyId = directorUser.CompanyId;
+        }
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var todayStr = today.ToString("yyyy-MM-dd");
 
@@ -75,18 +92,18 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
         else if (role == UserRole.AdminDivisi)
         {
             var subordinateUserIds = await _db.Users.AsNoTracking()
-                .Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User)
+                .Where(u => u.DepartmentId == currentDepartmentId && u.RoleId == (int)UserRole.User)
                 .Select(u => u.Id)
                 .ToListAsync(ct);
             var allowedUserIds = subordinateUserIds.Concat(new[] { userId!.Value }).Distinct().ToList();
             reportQuery = reportQuery.Where(r => allowedUserIds.Contains(r.UserId));
-            userQuery = userQuery.Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User);
+            userQuery = userQuery.Where(u => u.DepartmentId == currentDepartmentId && u.RoleId == (int)UserRole.User);
         }
         else if (role == UserRole.SuperAdmin)
         {
             reportQuery = reportQuery.Join(_db.Users.AsNoTracking(), r => r.UserId, u => u.Id, (r, u) => new { r, u })
-                .Where(x => x.u.CompanyId == currentUser.CompanyId).Select(x => x.r);
-            userQuery = userQuery.Where(u => u.CompanyId == currentUser.CompanyId);
+                .Where(x => x.u.CompanyId == currentCompanyId).Select(x => x.r);
+            userQuery = userQuery.Where(u => u.CompanyId == currentCompanyId);
         }
 
         var totalReports = await reportQuery.CountAsync(ct);

@@ -1,6 +1,7 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
+using API.Users;
 using Domain;
 
 namespace API.Reports;
@@ -40,12 +41,22 @@ public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentR
             return;
 
         var reportId = Route<int>("id");
-        var report = await _store.GetByIdAsync(reportId);
-        
-        if (report is null)
+        var accountType = User.GetAccountType();
+
+        // Determine which report table the ID belongs to
+        bool isDirectorReport = false;
+        var dailyReport = await _store.GetByIdAsync(reportId);
+        Domain.DirectorReport? directorReport = null;
+
+        if (dailyReport is null)
         {
-            await SendNotFoundAsync(ct);
-            return;
+            directorReport = await _store.GetDirectorReportByIdAsync(reportId, ct);
+            if (directorReport is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+            isDirectorReport = true;
         }
 
         if (req.File is null || req.File.Length == 0)
@@ -58,7 +69,8 @@ public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentR
         try
         {
             // Create uploads directory if not exists
-            var uploadsDir = Path.Combine(_environment.ContentRootPath, "uploads", "reports", reportId.ToString());
+            var subDir = isDirectorReport ? "director-reports" : "reports";
+            var uploadsDir = Path.Combine(_environment.ContentRootPath, "uploads", subDir, reportId.ToString());
             Directory.CreateDirectory(uploadsDir);
 
             // Generate unique filename
@@ -71,27 +83,38 @@ public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentR
                 await req.File.CopyToAsync(stream, ct);
             }
 
-            // Save attachment to database
-            var relativePath = $"/uploads/reports/{reportId}/{fileName}";
-            var attachment = await _store.AddAttachmentAsync(
-                reportId,
-                relativePath,
-                req.File.ContentType
-            );
+            var relativePath = $"/uploads/{subDir}/{reportId}/{fileName}";
 
-            if (attachment is null)
+            if (isDirectorReport)
             {
-                AddError("Failed to save attachment to database.");
-                await SendErrorsAsync(cancellation: ct);
-                return;
+                var attachment = await _store.AddDirectorAttachmentAsync(reportId, relativePath, ct);
+                if (attachment is null)
+                {
+                    AddError("Failed to save attachment to database.");
+                    await SendErrorsAsync(cancellation: ct);
+                    return;
+                }
+                var updatedReport = await _store.GetDirectorReportByIdAsync(reportId, ct);
+                await SendAsync(new UploadAttachmentResponse
+                {
+                    Item = updatedReport!.ToResponse()
+                }, cancellation: ct);
             }
-
-            // Return updated report with all attachments
-            var updatedReport = await _store.GetByIdAsync(reportId);
-            await SendAsync(new UploadAttachmentResponse
+            else
             {
-                Item = updatedReport!.ToResponse()
-            }, cancellation: ct);
+                var attachment = await _store.AddAttachmentAsync(reportId, relativePath, req.File.ContentType);
+                if (attachment is null)
+                {
+                    AddError("Failed to save attachment to database.");
+                    await SendErrorsAsync(cancellation: ct);
+                    return;
+                }
+                var updatedReport = await _store.GetByIdAsync(reportId);
+                await SendAsync(new UploadAttachmentResponse
+                {
+                    Item = updatedReport!.ToResponse()
+                }, cancellation: ct);
+            }
         }
         catch (Exception ex)
         {

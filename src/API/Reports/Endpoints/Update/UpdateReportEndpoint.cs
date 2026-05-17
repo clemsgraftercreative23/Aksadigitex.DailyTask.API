@@ -1,5 +1,6 @@
 using API.Auth;
 using API.Reports;
+using API.Users;
 using Domain;
 using FastEndpoints;
 using Infrastructure;
@@ -51,38 +52,67 @@ public class UpdateReportEndpoint : RoleAuthorizedEndpoint<UpdateReportRequest, 
         
         Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var userRole);
 
-        var report = await _db.DailyReports
-            .Include(r => r.Attachments)
-            .FirstOrDefaultAsync(r => r.Id == req.Id, ct);
+        var accountType = User.GetAccountType();
 
-        if (report is null) { await SendNotFoundAsync(ct); return; }
-
-        // User biasa hanya bisa edit report milik sendiri
-        // AdminDivisi, SuperAdmin, dan SuperDuperAdmin bisa edit report milik mereka sendiri
-        // (Untuk edit report milik orang lain, gunakan endpoint khusus admin)
-        if (report.UserId != userId.Value && userRole == UserRole.User)
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
         {
-            HttpContext.Response.StatusCode = 403;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya pemilik yang bisa mengedit" }, ct);
-            return;
-        }
+            var report = await _db.DirectorReports
+                .Include(r => r.Attachments)
+                .FirstOrDefaultAsync(r => r.Id == req.Id, ct);
+            if (report is null) { await SendNotFoundAsync(ct); return; }
 
-        if (report.Status == "approved")
+            if (report.UserId != userId.Value && userRole == UserRole.User)
+            {
+                HttpContext.Response.StatusCode = 403;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya pemilik yang bisa mengedit" }, ct);
+                return;
+            }
+            if (report.Status == "approved")
+            {
+                HttpContext.Response.StatusCode = 400;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Laporan yang sudah disetujui tidak bisa diedit" }, ct);
+                return;
+            }
+
+            if (req.TaskDescription != null) report.TaskDescription = req.TaskDescription;
+            if (req.Issue != null) report.Issue = req.Issue;
+            if (req.Solution != null) report.Solution = req.Solution;
+            if (req.Result != null) report.Result = req.Result;
+            if (req.ReportDate.HasValue) report.ReportDate = req.ReportDate.Value;
+            if (req.ReportTime.HasValue) report.ReportTime = req.ReportTime.Value;
+
+            await _db.SaveChangesAsync(ct);
+            await SendAsync(new UpdateReportStatusResponse { Item = report.ToResponse() }, cancellation: ct);
+        }
+        else
         {
-            HttpContext.Response.StatusCode = 400;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Laporan yang sudah disetujui tidak bisa diedit" }, ct);
-            return;
+            var report = await _db.DailyReports
+                .Include(r => r.Attachments)
+                .FirstOrDefaultAsync(r => r.Id == req.Id, ct);
+            if (report is null) { await SendNotFoundAsync(ct); return; }
+
+            if (report.UserId != userId.Value && userRole == UserRole.User)
+            {
+                HttpContext.Response.StatusCode = 403;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya pemilik yang bisa mengedit" }, ct);
+                return;
+            }
+            if (report.Status == "approved")
+            {
+                HttpContext.Response.StatusCode = 400;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = "Laporan yang sudah disetujui tidak bisa diedit" }, ct);
+                return;
+            }
+
+            if (req.TaskDescription != null) report.TaskDescription = req.TaskDescription;
+            if (req.Issue != null) report.Issue = req.Issue;
+            if (req.Solution != null) report.Solution = req.Solution;
+            if (req.Result != null) report.Result = req.Result;
+            if (req.ReportDate.HasValue) report.ReportDate = req.ReportDate.Value;
+            if (req.ReportTime.HasValue) report.ReportTime = req.ReportTime.Value;
+
+            await _db.SaveChangesAsync(ct);
+            await SendAsync(new UpdateReportStatusResponse { Item = report.ToResponse() }, cancellation: ct);
         }
-
-        if (req.TaskDescription != null) report.TaskDescription = req.TaskDescription;
-        if (req.Issue != null) report.Issue = req.Issue;
-        if (req.Solution != null) report.Solution = req.Solution;
-        if (req.Result != null) report.Result = req.Result;
-        if (req.ReportDate.HasValue) report.ReportDate = req.ReportDate.Value;
-        if (req.ReportTime.HasValue) report.ReportTime = req.ReportTime.Value;
-
-        await _db.SaveChangesAsync(ct);
-
-        await SendAsync(new UpdateReportStatusResponse { Item = report.ToResponse() }, cancellation: ct);
     }
 }

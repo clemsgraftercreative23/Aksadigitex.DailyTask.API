@@ -17,6 +17,9 @@ public class AppDbContext : DbContext {
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<CompanyDepartment> CompanyDepartments => Set<CompanyDepartment>();
     public DbSet<ReportPeriod> ReportPeriods => Set<ReportPeriod>();
+    public DbSet<DirectorReport> DirectorReports => Set<DirectorReport>();
+    public DbSet<DirectorReportAttachment> DirectorReportAttachments => Set<DirectorReportAttachment>();
+    public DbSet<DirectorNotification> DirectorNotifications => Set<DirectorNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +51,13 @@ public class AppDbContext : DbContext {
         // Configure DailyReportAttachment -> DailyReport relationship
         modelBuilder.Entity<DailyReportAttachment>()
             .HasOne(a => a.DailyReport)
+            .WithMany(r => r.Attachments)
+            .HasForeignKey(a => a.ReportId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Configure DirectorReportAttachment -> DirectorReport relationship
+        modelBuilder.Entity<DirectorReportAttachment>()
+            .HasOne(a => a.DirectorReport)
             .WithMany(r => r.Attachments)
             .HasForeignKey(a => a.ReportId)
             .OnDelete(DeleteBehavior.Cascade);

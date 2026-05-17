@@ -45,12 +45,38 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
         var currentUser = await _db.Users.AsNoTracking()
             .Include(u => u.RoleRef)
             .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+        string roleName;
+        UserRole roleEnum;
+        int? currentDepartmentId;
+        int? currentCompanyId;
+
+        if (currentUser is not null)
+        {
+            roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+            roleEnum = currentUser.Role;
+            currentDepartmentId = currentUser.DepartmentId;
+            currentCompanyId = currentUser.CompanyId;
+        }
+        else
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            // Resolve role name from Roles table for director user
+            roleName = await _db.Roles.AsNoTracking()
+                .Where(r => r.Id == directorUser.RoleId)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync(ct) ?? "";
+            roleName = roleName.Trim().ToLowerInvariant();
+            roleEnum = directorUser.Role;
+            currentDepartmentId = null;
+            currentCompanyId = directorUser.CompanyId;
+        }
 
         // Authorize using role_name from DB (handles role_id/enum mismatch)
-        var roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
         var roleAllowed = roleName is "admin_divisi" or "super_admin" or "super_duper_admin"
-            || currentUser.Role is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
+            || roleEnum is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
         if (!roleAllowed)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -64,13 +90,13 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
 
         var usersQuery = _db.Users.AsNoTracking().Where(u => u.IsActive && u.RoleId <= (int)UserRole.AdminDivisi);
 
-        if (roleName == "admin_divisi" || currentUser.Role == UserRole.AdminDivisi)
+        if (roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi)
         {
             // admin_divisi: hanya bawahan (user) di departemen yang sama
-            usersQuery = usersQuery.Where(u => u.DepartmentId == currentUser.DepartmentId && u.RoleId == (int)UserRole.User);
+            usersQuery = usersQuery.Where(u => u.DepartmentId == currentDepartmentId && u.RoleId == (int)UserRole.User);
         }
-        else if (roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin)
-            usersQuery = usersQuery.Where(u => u.CompanyId == currentUser.CompanyId);
+        else if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin)
+            usersQuery = usersQuery.Where(u => u.CompanyId == currentCompanyId);
 
         var todayReporterIds = await _db.DailyReports.AsNoTracking()
             .Where(r => r.ReportDate == today)

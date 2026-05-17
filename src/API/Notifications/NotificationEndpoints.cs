@@ -1,4 +1,4 @@
-using API.Reports;
+using API.Users;
 using Domain;
 using FastEndpoints;
 using Infrastructure;
@@ -40,21 +40,46 @@ public class ListNotificationsEndpoint : EndpointWithoutRequest<ListNotification
         var userId = User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
-        var items = await _db.Notifications
-            .AsNoTracking()
-            .Where(n => n.RecipientUserId == userId.Value)
-            .OrderByDescending(n => n.CreatedAt)
-            .Take(50)
-            .Select(n => new NotificationItemResponse
-            {
-                Id = n.Id,
-                Message = n.Message,
-                Type = n.Type,
-                ReferenceId = n.ReferenceId,
-                IsRead = n.IsRead,
-                CreatedAt = n.CreatedAt,
-            })
-            .ToListAsync(ct);
+        var accountType = User.GetAccountType();
+
+        List<NotificationItemResponse> items;
+
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
+        {
+            items = await _db.DirectorNotifications
+                .AsNoTracking()
+                .Where(n => n.RecipientUserId == userId.Value)
+                .OrderByDescending(n => n.CreatedAt)
+                .Take(50)
+                .Select(n => new NotificationItemResponse
+                {
+                    Id = n.Id,
+                    Message = n.Message,
+                    Type = n.Type,
+                    ReferenceId = n.ReferenceId,
+                    IsRead = n.IsRead,
+                    CreatedAt = n.CreatedAt,
+                })
+                .ToListAsync(ct);
+        }
+        else
+        {
+            items = await _db.Notifications
+                .AsNoTracking()
+                .Where(n => n.RecipientUserId == userId.Value)
+                .OrderByDescending(n => n.CreatedAt)
+                .Take(50)
+                .Select(n => new NotificationItemResponse
+                {
+                    Id = n.Id,
+                    Message = n.Message,
+                    Type = n.Type,
+                    ReferenceId = n.ReferenceId,
+                    IsRead = n.IsRead,
+                    CreatedAt = n.CreatedAt,
+                })
+                .ToListAsync(ct);
+        }
 
         var unreadCount = items.Count(i => !i.IsRead);
 
@@ -88,11 +113,22 @@ public class MarkNotificationReadEndpoint : Endpoint<MarkNotificationReadRequest
         var userId = User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
-        var notif = await _db.Notifications.FirstOrDefaultAsync(n => n.Id == req.Id && n.RecipientUserId == userId.Value, ct);
-        if (notif is null) { await SendNotFoundAsync(ct); return; }
+        var accountType = User.GetAccountType();
 
-        notif.IsRead = true;
-        await _db.SaveChangesAsync(ct);
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
+        {
+            var notif = await _db.DirectorNotifications.FirstOrDefaultAsync(n => n.Id == req.Id && n.RecipientUserId == userId.Value, ct);
+            if (notif is null) { await SendNotFoundAsync(ct); return; }
+            notif.IsRead = true;
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            var notif = await _db.Notifications.FirstOrDefaultAsync(n => n.Id == req.Id && n.RecipientUserId == userId.Value, ct);
+            if (notif is null) { await SendNotFoundAsync(ct); return; }
+            notif.IsRead = true;
+            await _db.SaveChangesAsync(ct);
+        }
         await SendOkAsync(new { success = true }, ct);
     }
 }
@@ -114,9 +150,20 @@ public class MarkAllReadEndpoint : EndpointWithoutRequest
         var userId = User.GetUserId();
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
-        await _db.Notifications
-            .Where(n => n.RecipientUserId == userId.Value && !n.IsRead)
-            .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true), ct);
+        var accountType = User.GetAccountType();
+
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
+        {
+            await _db.DirectorNotifications
+                .Where(n => n.RecipientUserId == userId.Value && !n.IsRead)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true), ct);
+        }
+        else
+        {
+            await _db.Notifications
+                .Where(n => n.RecipientUserId == userId.Value && !n.IsRead)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true), ct);
+        }
 
         await SendOkAsync(new { success = true }, ct);
     }

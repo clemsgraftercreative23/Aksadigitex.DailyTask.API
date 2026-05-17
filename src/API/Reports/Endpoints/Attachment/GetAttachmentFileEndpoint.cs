@@ -33,14 +33,35 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
         var attachmentId = Route<int>("attachmentId");
 
         var report = await _store.GetByIdAsync(reportId);
-        if (report is null)
+        string? attachmentPath = null;
+        string? fileType = null;
+
+        if (report is not null)
         {
-            await SendNotFoundAsync(ct);
-            return;
+            var att = report.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+            if (att is not null)
+            {
+                attachmentPath = att.AttachmentPath;
+                fileType = att.FileType;
+            }
         }
 
-        var attachment = report.Attachments.FirstOrDefault(a => a.Id == attachmentId);
-        if (attachment is null)
+        if (attachmentPath is null)
+        {
+            // Fallback: check director_reports
+            var dirReport = await _store.GetDirectorReportByIdAsync(reportId);
+            if (dirReport is not null)
+            {
+                var att = dirReport.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+                if (att is not null)
+                {
+                    attachmentPath = att.AttachmentPath;
+                    fileType = null; // director_report_attachments has no file_type column
+                }
+            }
+        }
+
+        if (attachmentPath is null)
         {
             await SendNotFoundAsync(ct);
             return;
@@ -51,7 +72,7 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
         // - "uploads/reports/40/file.jpg"
         // - "reports/40/file.jpg" (from Backoffice)
         // - "file.jpg" (filename only)
-        var rawPath = (attachment.AttachmentPath ?? "").Trim().TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        var rawPath = (attachmentPath ?? "").Trim().TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
         if (string.IsNullOrEmpty(rawPath))
         {
             await SendNotFoundAsync(ct);
@@ -78,8 +99,8 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
         }
 
         var provider = new FileExtensionContentTypeProvider();
-        if (!provider.TryGetContentType(attachment.AttachmentPath, out var contentType))
-            contentType = attachment.FileType ?? "application/octet-stream";
+        if (!provider.TryGetContentType(attachmentPath!, out var contentType))
+            contentType = fileType ?? "application/octet-stream";
 
         HttpContext.Response.ContentType = contentType;
         await HttpContext.Response.SendFileAsync(physicalPath, ct);

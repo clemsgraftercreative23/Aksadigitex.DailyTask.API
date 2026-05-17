@@ -57,12 +57,21 @@ public class UrgentReportsEndpoint : RoleAuthorizedEndpointWithoutRequest<Urgent
 
         var userIds = reports.Select(r => r.UserId).Distinct().ToList();
         var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToListAsync(ct);
+
+        // Fallback: find user_ids not in users table — they may be in director_users
+        var foundUserIds = users.Select(u => u.Id).ToHashSet();
+        var missingUserIds = userIds.Where(id => !foundUserIds.Contains(id)).ToList();
+        var directorUsers = missingUserIds.Count > 0
+            ? await _db.DirectorUsers.AsNoTracking().Where(u => missingUserIds.Contains(u.Id)).ToListAsync(ct)
+            : new List<DirectorUser>();
+
         var departments = await _db.Departments.AsNoTracking().ToListAsync(ct);
         var companies = await _db.Companies.AsNoTracking().ToListAsync(ct);
 
         var items = reports.Select(r =>
         {
             var u = users.FirstOrDefault(x => x.Id == r.UserId);
+            var du = u is null ? directorUsers.FirstOrDefault(x => x.Id == r.UserId) : null;
             return new UrgentReportItem
             {
                 Id = r.Id,
@@ -73,10 +82,10 @@ public class UrgentReportsEndpoint : RoleAuthorizedEndpointWithoutRequest<Urgent
                 DirectorSolution = r.DirectorSolution,
                 ManagerNote = r.ManagerNote,
                 AttachmentPath = r.AttachmentPath,
-                FullName = u?.FullName ?? "",
+                FullName = u?.FullName ?? du?.FullName ?? "",
                 Position = u?.Position,
                 DepartmentName = departments.FirstOrDefault(d => d.Id == u?.DepartmentId)?.DepartmentName,
-                CompanyName = companies.FirstOrDefault(c => c.Id == u?.CompanyId)?.CompanyName,
+                CompanyName = companies.FirstOrDefault(c => c.Id == (u?.CompanyId ?? du?.CompanyId))?.CompanyName,
                 ReportDate = r.ReportDate.ToString("yyyy-MM-dd"),
                 IsSolved = !string.IsNullOrEmpty(r.DirectorSolution),
             };

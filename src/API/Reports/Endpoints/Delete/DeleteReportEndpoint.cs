@@ -1,5 +1,6 @@
 using API.Auth;
 using API.Reports;
+using API.Users;
 using Domain;
 using FastEndpoints;
 using Infrastructure;
@@ -40,39 +41,63 @@ public class DeleteReportEndpoint : RoleAuthorizedEndpointWithoutRequest<object>
             return;
         }
 
-        var report = await _db.DailyReports
-            .Include(r => r.Attachments)
-            .FirstOrDefaultAsync(r => r.Id == reportId, ct);
+        var accountType = User.GetAccountType();
 
-        if (report is null)
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
         {
-            await SendNotFoundAsync(ct);
-            return;
-        }
+            var report = await _db.DirectorReports
+                .Include(r => r.Attachments)
+                .FirstOrDefaultAsync(r => r.Id == reportId, ct);
+            if (report is null) { await SendNotFoundAsync(ct); return; }
 
-        // Semua role: hanya bisa hapus laporan sendiri, dan hanya status draft.
-        // Khusus SuperDuperAdmin: boleh hapus laporan milik siapa pun dan untuk semua status.
-        if (!isSuperDuperAdmin)
-        {
-            if (report.UserId != userId.Value)
+            if (!isSuperDuperAdmin)
             {
-                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
-                return;
+                if (report.UserId != userId.Value)
+                {
+                    HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
+                    return;
+                }
+                if (report.Status?.ToLowerInvariant() != "draft")
+                {
+                    HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
+                    return;
+                }
             }
 
-            if (report.Status?.ToLowerInvariant() != "draft")
-            {
-                HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
-                return;
-            }
+            _db.DirectorReportAttachments.RemoveRange(report.Attachments);
+            _db.DirectorReports.Remove(report);
+            await _db.SaveChangesAsync(ct);
+            await SendNoContentAsync(ct);
         }
+        else
+        {
+            var report = await _db.DailyReports
+                .Include(r => r.Attachments)
+                .FirstOrDefaultAsync(r => r.Id == reportId, ct);
+            if (report is null) { await SendNotFoundAsync(ct); return; }
 
-        _db.DailyReportAttachments.RemoveRange(report.Attachments);
-        _db.DailyReports.Remove(report);
-        await _db.SaveChangesAsync(ct);
+            if (!isSuperDuperAdmin)
+            {
+                if (report.UserId != userId.Value)
+                {
+                    HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await HttpContext.Response.WriteAsJsonAsync(new { message = "Anda hanya dapat menghapus laporan milik Anda sendiri." }, ct);
+                    return;
+                }
+                if (report.Status?.ToLowerInvariant() != "draft")
+                {
+                    HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await HttpContext.Response.WriteAsJsonAsync(new { message = "Hanya laporan draft yang dapat dihapus." }, ct);
+                    return;
+                }
+            }
 
-        await SendNoContentAsync(ct);
+            _db.DailyReportAttachments.RemoveRange(report.Attachments);
+            _db.DailyReports.Remove(report);
+            await _db.SaveChangesAsync(ct);
+            await SendNoContentAsync(ct);
+        }
     }
 }

@@ -51,10 +51,30 @@ public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, 
             .Include(u => u.RoleRef)
             .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
 
-        var departmentName = user?.DepartmentId.HasValue == true
+        // Fallback: check director_users for audit logging
+        string auditFullName = user?.FullName ?? "-";
+        string auditEmail = user?.Email ?? "-";
+        string auditRoleDb = user?.RoleRef?.RoleName ?? user?.Role.ToString() ?? "-";
+        int? auditDepartmentId = user?.DepartmentId;
+        int? auditCompanyId = user?.CompanyId;
+
+        if (user is null)
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            if (directorUser is not null)
+            {
+                auditFullName = directorUser.FullName;
+                auditEmail = directorUser.Email;
+                auditRoleDb = directorUser.Role.ToString();
+                auditCompanyId = directorUser.CompanyId;
+            }
+        }
+
+        var departmentName = auditDepartmentId.HasValue
             ? await _db.Departments
                 .AsNoTracking()
-                .Where(d => d.Id == user.DepartmentId!.Value)
+                .Where(d => d.Id == auditDepartmentId.Value)
                 .Select(d => d.DepartmentName)
                 .FirstOrDefaultAsync(ct)
             : null;
@@ -62,13 +82,13 @@ public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, 
         _logger.LogInformation(
             "===========================00000000000000000000000000[GIVE_SOLUTION_AUDIT] userId={UserId}, fullName={FullName}, email={Email}, roleToken={RoleToken}, roleDb={RoleDb}, departmentId={DepartmentId}, departmentName={DepartmentName}, companyId={CompanyId}, reportId={ReportId}",
             userId.Value,
-            user?.FullName ?? "-",
-            user?.Email ?? "-",
+            auditFullName,
+            auditEmail,
             roleClaim,
-            user?.RoleRef?.RoleName ?? user?.Role.ToString() ?? "-",
-            user?.DepartmentId,
+            auditRoleDb,
+            auditDepartmentId,
             departmentName ?? "-",
-            user?.CompanyId,
+            auditCompanyId,
             Route<int>("id")
         );
 

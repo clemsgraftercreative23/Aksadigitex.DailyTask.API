@@ -39,6 +39,25 @@ public class ReportStore
         if (report is null) return (null, null);
 
         var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+        if (user is null)
+        {
+            // Fallback: user_id might reference director_users table
+            var directorUser = await _context.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+            if (directorUser is not null)
+            {
+                // Map DirectorUser to a User object for compatibility with downstream code
+                user = new User
+                {
+                    Id = directorUser.Id,
+                    FullName = directorUser.FullName,
+                    Email = directorUser.Email,
+                    RoleId = directorUser.RoleId,
+                    CompanyId = directorUser.CompanyId,
+                    IsActive = directorUser.IsActive,
+                    CreatedAt = directorUser.CreatedAt,
+                };
+            }
+        }
         return (report, user);
     }
 
@@ -75,7 +94,14 @@ public class ReportStore
             .Where(x => x.Id == userId)
             .Select(x => new { x.DepartmentId, x.CompanyId, x.FullName })
             .FirstOrDefaultAsync(ct);
-        return u != null ? (u.DepartmentId, u.CompanyId, u.FullName) : (null, null, "");
+        if (u != null) return (u.DepartmentId, u.CompanyId, u.FullName);
+
+        // Fallback: check director_users table
+        var du = await _context.DirectorUsers.AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => new { x.CompanyId, x.FullName })
+            .FirstOrDefaultAsync(ct);
+        return du != null ? (null, du.CompanyId, du.FullName) : (null, null, "");
     }
 
     /// <summary>
@@ -193,7 +219,17 @@ public class ReportStore
         try
         {
             var creator = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, ct);
-            if (creator is null) return;
+            if (creator is null)
+            {
+                // Fallback: check director_users for creator info
+                var dirCreator = await _context.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == creatorUserId, ct);
+                if (dirCreator is null) return;
+                creator = new User
+                {
+                    Id = dirCreator.Id, FullName = dirCreator.FullName, Email = dirCreator.Email,
+                    RoleId = dirCreator.RoleId, CompanyId = dirCreator.CompanyId, IsActive = dirCreator.IsActive,
+                };
+            }
 
             var creatorName = creator.FullName ?? creator.Email ?? "User";
             var issueText = ""; // Will be populated from report
@@ -318,26 +354,22 @@ public class ReportStore
 
         try
         {
-            var notif = new Notification
-            {
-                RecipientUserId = report.UserId,
-                SenderType = "system",
-                Message = $"Laporan Anda telah disetujui (Approved) oleh {reviewerName}.",
-                Type = "laporan_diapprove",
-                ReferenceId = id,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Notifications.Add(notif);
-            await _context.SaveChangesAsync(ct);
+            var approveMsg = $"Laporan Anda telah disetujui (Approved) oleh {reviewerName}.";
+            await InsertNotificationForRecipientAsync(
+                report.UserId, approveMsg, "laporan_diapprove", id, ct);
 
             var recipient = await _context.Users.AsNoTracking()
                 .Where(u => u.Id == report.UserId)
                 .Select(u => u.FcmToken)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(ct)
+                ?? await _context.DirectorUsers.AsNoTracking()
+                    .Where(u => u.Id == report.UserId)
+                    .Select(u => u.FcmToken)
+                    .FirstOrDefaultAsync(ct);
             await _fcm.SendAsync(recipient,
                 "Laporan Disetujui",
-                notif.Message,
-                notif.Type ?? "laporan_diapprove",
+                approveMsg,
+                "laporan_diapprove",
                 id,
                 ct);
         }
@@ -362,26 +394,22 @@ public class ReportStore
 
         try
         {
-            var notif = new Notification
-            {
-                RecipientUserId = report.UserId,
-                SenderType = "system",
-                Message = $"Laporan Anda ditolak/perlu revisi. Catatan: {reason}",
-                Type = "laporan_direview",
-                ReferenceId = id,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Notifications.Add(notif);
-            await _context.SaveChangesAsync(ct);
+            var rejectMsg = $"Laporan Anda ditolak/perlu revisi. Catatan: {reason}";
+            await InsertNotificationForRecipientAsync(
+                report.UserId, rejectMsg, "laporan_direview", id, ct);
 
             var recipientReject = await _context.Users.AsNoTracking()
                 .Where(u => u.Id == report.UserId)
                 .Select(u => u.FcmToken)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(ct)
+                ?? await _context.DirectorUsers.AsNoTracking()
+                    .Where(u => u.Id == report.UserId)
+                    .Select(u => u.FcmToken)
+                    .FirstOrDefaultAsync(ct);
             await _fcm.SendAsync(recipientReject,
                 "Laporan Ditolak",
-                notif.Message,
-                notif.Type ?? "laporan_direview",
+                rejectMsg,
+                "laporan_direview",
                 id,
                 ct);
         }
@@ -409,26 +437,22 @@ public class ReportStore
 
         try
         {
-            var notif = new Notification
-            {
-                RecipientUserId = report.UserId,
-                SenderType = "system",
-                Message = "SDA telah memberikan solusi untuk laporan Anda.",
-                Type = "solution_ready",
-                ReferenceId = reportId,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Notifications.Add(notif);
-            await _context.SaveChangesAsync(ct);
+            var solMsg = "SDA telah memberikan solusi untuk laporan Anda.";
+            await InsertNotificationForRecipientAsync(
+                report.UserId, solMsg, "solution_ready", reportId, ct);
 
             var recipientSolution = await _context.Users.AsNoTracking()
                 .Where(u => u.Id == report.UserId)
                 .Select(u => u.FcmToken)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(ct)
+                ?? await _context.DirectorUsers.AsNoTracking()
+                    .Where(u => u.Id == report.UserId)
+                    .Select(u => u.FcmToken)
+                    .FirstOrDefaultAsync(ct);
             await _fcm.SendAsync(recipientSolution,
                 "Solusi Tersedia",
-                notif.Message,
-                notif.Type ?? "solution_ready",
+                solMsg,
+                "solution_ready",
                 reportId,
                 ct);
         }
@@ -462,13 +486,19 @@ public class ReportStore
 
         try
         {
-            var reportUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+            var reportUserRaw = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+            string? reportUserFullName = reportUserRaw?.FullName;
+            if (reportUserRaw is null)
+            {
+                var dirUser = await _context.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+                reportUserFullName = dirUser?.FullName;
+            }
 
             var issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 80
                 ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 80) + "..."
                 : (report.Issue ?? report.TaskDescription ?? "");
 
-            var msgUser = $"🟡 [BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
+            var msgUser = $"🟡 [BANTUAN] {reportUserFullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
             var prefix = currentRole == UserRole.AdminDivisi ? "🔴 [URGENT] Admin " : "🔴 [URGENT] ";
             var msgAdmin = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"";
 
@@ -593,6 +623,188 @@ public class ReportStore
         await _context.SaveChangesAsync();
         return attachment;
     }
+    // ───────────────────────────────────────────────────────
+    //  DirectorReport CRUD — parallel to DailyReport methods
+    // ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Create a director_reports entry. DirectorUser FK is safe here.
+    /// </summary>
+    public async Task<DirectorReport?> CreateDirectorReportAsync(
+        int userId, DateOnly reportDate, TimeOnly reportTime,
+        string taskDescription, string issue, string solution, string result,
+        string status = "draft", CancellationToken ct = default)
+    {
+        var normalizedStatus = status?.ToLowerInvariant() == "submitted" ? "submitted" : "draft";
+        var report = new DirectorReport
+        {
+            UserId = userId,
+            ReportDate = reportDate,
+            ReportTime = reportTime,
+            TaskDescription = taskDescription,
+            Issue = issue,
+            Solution = solution,
+            Result = result,
+            Status = normalizedStatus,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.DirectorReports.Add(report);
+        await _context.SaveChangesAsync(ct);
+
+        if (normalizedStatus == "submitted")
+        {
+            try { await NotifyDirectorSuperiorAsync(report, ct); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "NotifyDirectorSuperiorAsync failed for directorReportId={ReportId}, userId={UserId}",
+                    report.Id, report.UserId);
+            }
+        }
+        return report;
+    }
+
+    public async Task<DirectorReport?> GetDirectorReportByIdAsync(int id, CancellationToken ct = default)
+    {
+        return await _context.DirectorReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+    }
+
+    public async Task<DirectorReport?> SubmitDirectorReportAsync(int id, int userId, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, ct);
+        if (report is null) return null;
+
+        report.Status = "submitted";
+        _context.DirectorReports.Update(report);
+        await _context.SaveChangesAsync(ct);
+
+        try { await NotifyDirectorSuperiorAsync(report, ct); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "NotifyDirectorSuperiorAsync failed for directorReportId={ReportId}, userId={UserId}",
+                report.Id, report.UserId);
+        }
+        return report;
+    }
+
+    public async Task<DirectorReportAttachment?> AddDirectorAttachmentAsync(int reportId, string attachmentPath, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports.FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null) return null;
+
+        var attachment = new DirectorReportAttachment
+        {
+            ReportId = reportId,
+            AttachmentPath = attachmentPath,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.DirectorReportAttachments.Add(attachment);
+        await _context.SaveChangesAsync(ct);
+        return attachment;
+    }
+
+    // ───────────────────────────────────────────────────────
+    //  Notification routing helper
+    // ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Insert a notification to the correct table based on whether recipientUserId
+    /// belongs to users or director_users.
+    /// </summary>
+    public async Task InsertNotificationForRecipientAsync(
+        int recipientUserId, string message, string type, int? referenceId,
+        CancellationToken ct = default)
+    {
+        // Check if recipient is a regular user (FK-safe for notifications table)
+        var isRegularUser = await _context.Users.AsNoTracking()
+            .AnyAsync(u => u.Id == recipientUserId, ct);
+
+        if (isRegularUser)
+        {
+            _context.Notifications.Add(new Notification
+            {
+                RecipientUserId = recipientUserId,
+                SenderType = "system",
+                Message = message,
+                Type = type,
+                ReferenceId = referenceId,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+        else
+        {
+            // Assume director_users — FK-safe for director_notifications table
+            _context.DirectorNotifications.Add(new DirectorNotification
+            {
+                RecipientUserId = recipientUserId,
+                SenderType = "system",
+                Message = message,
+                Type = type,
+                ReferenceId = referenceId,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+        await _context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Simple notification for submitted director reports (e.g., notify SDA).
+    /// </summary>
+    private async Task NotifyDirectorSuperiorAsync(DirectorReport report, CancellationToken ct)
+    {
+        var creator = await _context.DirectorUsers.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+        if (creator is null) return;
+
+        var desc = report.TaskDescription ?? "";
+        var snippet = desc.Length > 80
+            ? desc.Substring(0, 80) + "..."
+            : desc;
+
+        // Notify SDA users in the same company
+        var sdaUsers = await _context.DirectorUsers.AsNoTracking()
+            .Where(u => u.CompanyId == creator.CompanyId
+                        && u.IsActive
+                        && u.RoleId >= (int)UserRole.SuperAdmin
+                        && u.Id != creator.Id)
+            .Select(u => new { u.Id, u.FcmToken })
+            .ToListAsync(ct);
+
+        foreach (var sda in sdaUsers)
+        {
+            _context.DirectorNotifications.Add(new DirectorNotification
+            {
+                RecipientUserId = sda.Id,
+                SenderType = "system",
+                Message = $"📝 {creator.FullName} mengirim laporan: \"{snippet}\"",
+                Type = "laporan_direview",
+                ReferenceId = report.Id,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+
+            if (!string.IsNullOrEmpty(sda.FcmToken))
+            {
+                try
+                {
+                    await _fcm.SendAsync(sda.FcmToken, "Laporan Baru (Holding)", $"{creator.FullName}: \"{snippet}\"", "laporan_direview", report.Id, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "FCM push failed for directorUser {SdaId}", sda.Id);
+                }
+            }
+        }
+        await _context.SaveChangesAsync(ct);
+    }
 }
 
 public static class ReportMappingExtensions
@@ -623,6 +835,42 @@ public static class ReportMappingExtensions
                     Id = a.Id,
                     AttachmentPath = a.AttachmentPath,
                     FileType = a.FileType,
+                    CreatedAt = a.CreatedAt
+                })
+                .ToList()
+        };
+    }
+
+    /// <summary>
+    /// Maps a DirectorReport to the shared ReportItemResponse contract.
+    /// DirectorReport has no rating columns, so they default to null.
+    /// </summary>
+    public static ReportItemResponse ToResponse(this DirectorReport report)
+    {
+        return new ReportItemResponse
+        {
+            Id = report.Id,
+            UserId = report.UserId,
+            ReportDate = report.ReportDate,
+            ReportTime = report.ReportTime,
+            TaskDescription = report.TaskDescription,
+            Issue = report.Issue,
+            Solution = report.Solution,
+            Result = report.Result,
+            Status = report.Status,
+            ManagerNote = report.ManagerNote,
+            DirectorSolution = report.DirectorSolution,
+            IsAskedDirector = report.IsAskedDirector,
+            TaskRating = null,
+            IssueRating = null,
+            SolutionRating = null,
+            CreatedAt = report.CreatedAt,
+            Attachments = report.Attachments
+                .Select(a => new ReportAttachmentResponse
+                {
+                    Id = a.Id,
+                    AttachmentPath = a.AttachmentPath,
+                    FileType = string.Empty,
                     CreatedAt = a.CreatedAt
                 })
                 .ToList()

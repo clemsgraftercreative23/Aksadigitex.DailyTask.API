@@ -48,11 +48,36 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
         var currentUser = await _db.Users.AsNoTracking()
             .Include(u => u.RoleRef)
             .FirstOrDefaultAsync(u => u.Id == currentUserId.Value, ct);
-        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
 
-        var roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+        string roleName;
+        UserRole roleEnum;
+        int? currentDepartmentId;
+        int? currentCompanyId;
+
+        if (currentUser is not null)
+        {
+            roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+            roleEnum = currentUser.Role;
+            currentDepartmentId = currentUser.DepartmentId;
+            currentCompanyId = currentUser.CompanyId;
+        }
+        else
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId.Value, ct);
+            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            roleName = await _db.Roles.AsNoTracking()
+                .Where(r => r.Id == directorUser.RoleId)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync(ct) ?? "";
+            roleName = roleName.Trim().ToLowerInvariant();
+            roleEnum = directorUser.Role;
+            currentDepartmentId = null;
+            currentCompanyId = directorUser.CompanyId;
+        }
+
         var hasAccess = roleName is "admin_divisi" or "super_admin" or "super_duper_admin"
-            || currentUser.Role is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
+            || roleEnum is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
         if (!hasAccess)
         {
             HttpContext.Response.StatusCode = 403;
@@ -67,12 +92,12 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
             return;
         }
 
-        if ((roleName == "admin_divisi" || currentUser.Role == UserRole.AdminDivisi) && (target.DepartmentId != currentUser.DepartmentId || target.CompanyId != currentUser.CompanyId))
+        if ((roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi) && (target.DepartmentId != currentDepartmentId || target.CompanyId != currentCompanyId))
         {
             await SendAsync(new { success = false, message = "Akses ditolak (Divisi berbeda)." }, 403, ct);
             return;
         }
-        if ((roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin) && target.CompanyId != currentUser.CompanyId)
+        if ((roleName == "super_admin" || roleEnum == UserRole.SuperAdmin) && target.CompanyId != currentCompanyId)
         {
             await SendAsync(new { success = false, message = "Akses ditolak (Perusahaan berbeda)." }, 403, ct);
             return;
@@ -135,11 +160,36 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
         var currentUser = await _db.Users.AsNoTracking()
             .Include(u => u.RoleRef)
             .FirstOrDefaultAsync(u => u.Id == currentUserId.Value, ct);
-        if (currentUser is null) { await SendUnauthorizedAsync(ct); return; }
 
-        var roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+        string roleName;
+        UserRole roleEnum;
+        int? currentDepartmentId;
+        int? currentCompanyId;
+
+        if (currentUser is not null)
+        {
+            roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+            roleEnum = currentUser.Role;
+            currentDepartmentId = currentUser.DepartmentId;
+            currentCompanyId = currentUser.CompanyId;
+        }
+        else
+        {
+            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId.Value, ct);
+            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            roleName = await _db.Roles.AsNoTracking()
+                .Where(r => r.Id == directorUser.RoleId)
+                .Select(r => r.RoleName)
+                .FirstOrDefaultAsync(ct) ?? "";
+            roleName = roleName.Trim().ToLowerInvariant();
+            roleEnum = directorUser.Role;
+            currentDepartmentId = null;
+            currentCompanyId = directorUser.CompanyId;
+        }
+
         var hasAccess = roleName is "admin_divisi" or "super_admin" or "super_duper_admin"
-            || currentUser.Role is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
+            || roleEnum is UserRole.AdminDivisi or UserRole.SuperAdmin or UserRole.SuperDuperAdmin;
         if (!hasAccess)
         {
             HttpContext.Response.StatusCode = 403;
@@ -154,10 +204,10 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
         }
 
         IQueryable<Domain.User> verifyQuery = _db.Users.Where(u => req.UserIds.Contains(u.Id) && u.IsActive);
-        if (roleName == "admin_divisi" || currentUser.Role == UserRole.AdminDivisi)
-            verifyQuery = verifyQuery.Where(u => u.DepartmentId == currentUser.DepartmentId && u.CompanyId == currentUser.CompanyId);
-        else if (roleName == "super_admin" || currentUser.Role == UserRole.SuperAdmin)
-            verifyQuery = verifyQuery.Where(u => u.CompanyId == currentUser.CompanyId);
+        if (roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi)
+            verifyQuery = verifyQuery.Where(u => u.DepartmentId == currentDepartmentId && u.CompanyId == currentCompanyId);
+        else if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin)
+            verifyQuery = verifyQuery.Where(u => u.CompanyId == currentCompanyId);
 
         var validUsers = await verifyQuery.Select(u => new { u.Id, u.FcmToken }).ToListAsync(ct);
         var validIds = validUsers.Select(u => u.Id).ToList();

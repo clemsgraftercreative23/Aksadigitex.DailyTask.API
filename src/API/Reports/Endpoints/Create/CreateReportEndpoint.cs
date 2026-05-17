@@ -1,6 +1,7 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
+using API.Users;
 using Domain;
 
 namespace API.Reports;
@@ -66,24 +67,50 @@ public class CreateReportEndpoint : RoleAuthorizedEndpoint<CreateReportRequest, 
             return;
         }
 
-        var (deptId, _, _) = await _store.GetReviewerContextAsync(userId.Value, ct);
+        var accountType = User.GetAccountType();
 
-        var report = await _store.CreateAsync(
-            userId.Value,
-            req.ReportDate,
-            req.ReportTime,
-            req.TaskDescription.Trim(),
-            req.Issue.Trim(),
-            req.Solution.Trim(),
-            resultNormalized,
-            req.Status,
-            deptId,
-            ct
-        );
-
-        await SendAsync(new CreateReportResponse
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
         {
-            Item = report!.ToResponse()
-        }, cancellation: ct);
+            // DirectorUser → insert into director_reports (FK-safe)
+            var directorReport = await _store.CreateDirectorReportAsync(
+                userId.Value,
+                req.ReportDate,
+                req.ReportTime,
+                req.TaskDescription.Trim(),
+                req.Issue.Trim(),
+                req.Solution.Trim(),
+                resultNormalized,
+                req.Status,
+                ct
+            );
+
+            await SendAsync(new CreateReportResponse
+            {
+                Item = directorReport!.ToResponse()
+            }, cancellation: ct);
+        }
+        else
+        {
+            // Regular User → insert into daily_report (original flow)
+            var (deptId, _, _) = await _store.GetReviewerContextAsync(userId.Value, ct);
+
+            var report = await _store.CreateAsync(
+                userId.Value,
+                req.ReportDate,
+                req.ReportTime,
+                req.TaskDescription.Trim(),
+                req.Issue.Trim(),
+                req.Solution.Trim(),
+                resultNormalized,
+                req.Status,
+                deptId,
+                ct
+            );
+
+            await SendAsync(new CreateReportResponse
+            {
+                Item = report!.ToResponse()
+            }, cancellation: ct);
+        }
     }
 }

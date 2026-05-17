@@ -1,6 +1,7 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
+using API.Users;
 using Domain;
 
 namespace API.Reports;
@@ -44,33 +45,47 @@ public class SubmitReportEndpoint : RoleAuthorizedEndpointWithoutRequest<UpdateR
             return;
         }
 
-        var existing = await _store.GetByIdAsync(reportId);
-        if (existing is null)
+        var accountType = User.GetAccountType();
+
+        if (accountType == API.Auth.AuthAccountType.DirectorUser)
         {
-            await SendNotFoundAsync(ct);
-            return;
+            var existing = await _store.GetDirectorReportByIdAsync(reportId, ct);
+            if (existing is null) { await SendNotFoundAsync(ct); return; }
+            if (existing.UserId != userId.Value)
+            {
+                AddError("Anda tidak memiliki akses ke laporan ini.");
+                await SendErrorsAsync(statusCode: 403, cancellation: ct);
+                return;
+            }
+            var status = (existing.Status ?? "").ToLowerInvariant();
+            if (status != "draft" && status != "rejected")
+            {
+                AddError($"Laporan tidak bisa dikirim karena status saat ini '{existing.Status}'.");
+                await SendErrorsAsync(cancellation: ct);
+                return;
+            }
+            var updated = await _store.SubmitDirectorReportAsync(reportId, userId.Value, ct);
+            await SendAsync(new UpdateReportStatusResponse { Item = updated!.ToResponse() }, cancellation: ct);
         }
-
-        if (existing.UserId != userId.Value)
+        else
         {
-            AddError("Anda tidak memiliki akses ke laporan ini.");
-            await SendErrorsAsync(statusCode: 403, cancellation: ct);
-            return;
+            var existing = await _store.GetByIdAsync(reportId);
+            if (existing is null) { await SendNotFoundAsync(ct); return; }
+            if (existing.UserId != userId.Value)
+            {
+                AddError("Anda tidak memiliki akses ke laporan ini.");
+                await SendErrorsAsync(statusCode: 403, cancellation: ct);
+                return;
+            }
+            var status = (existing.Status ?? "").ToLowerInvariant();
+            if (status != "draft" && status != "rejected")
+            {
+                AddError($"Laporan tidak bisa dikirim karena status saat ini '{existing.Status}'.");
+                await SendErrorsAsync(cancellation: ct);
+                return;
+            }
+            var updated = await _store.SubmitAsync(reportId, userId.Value, ct);
+            await SendAsync(new UpdateReportStatusResponse { Item = updated!.ToResponse() }, cancellation: ct);
         }
-
-        var status = (existing.Status ?? "").ToLowerInvariant();
-        if (status != "draft" && status != "rejected")
-        {
-            AddError($"Laporan tidak bisa dikirim karena status saat ini '{existing.Status}'.");
-            await SendErrorsAsync(cancellation: ct);
-            return;
-        }
-
-        var updated = await _store.SubmitAsync(reportId, userId.Value, ct);
-
-        await SendAsync(new UpdateReportStatusResponse
-        {
-            Item = updated!.ToResponse()
-        }, cancellation: ct);
     }
 }
