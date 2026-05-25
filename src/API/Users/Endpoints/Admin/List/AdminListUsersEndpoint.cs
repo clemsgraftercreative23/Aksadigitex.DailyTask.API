@@ -42,9 +42,23 @@ public class AdminListUsersEndpoint : RoleAuthorizedEndpointWithoutRequest<Admin
             .OrderBy(x => x.Id)
             .ToListAsync(ct);
 
+        var directorUsers = await _db.DirectorUsers
+            .AsNoTracking()
+            .OrderBy(x => x.Id)
+            .ToListAsync(ct);
+
+        var roleNames = await _db.Roles
+            .AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, x => x.RoleName, ct);
+
         await SendAsync(new AdminUserListResponse
         {
-            Items = users.Select(x => x.ToUserItemResponse()).ToList()
+            Items = users
+                .Select(x => x.ToUserItemResponse())
+                .Concat(directorUsers.Select(x =>
+                    x.ToUserItemResponse(roleNames.TryGetValue(x.RoleId, out var roleName) ? roleName : null)))
+                .OrderBy(x => x.Id)
+                .ToList()
         }, cancellation: ct);
     }
 }

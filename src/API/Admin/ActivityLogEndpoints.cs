@@ -117,6 +117,34 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
             })
             .ToListAsync(ct);
 
+        if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin ||
+            roleName == "super_duper_admin" || roleEnum == UserRole.SuperDuperAdmin)
+        {
+            IQueryable<DirectorUser> directorUsersQuery = _db.DirectorUsers.AsNoTracking()
+                .Where(u => u.IsActive && u.RoleId <= (int)UserRole.AdminDivisi);
+
+            if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin)
+                directorUsersQuery = directorUsersQuery.Where(u => u.CompanyId == currentCompanyId);
+
+            var todayDirectorReporterIds = await _db.DirectorReports.AsNoTracking()
+                .Where(r => r.ReportDate == today)
+                .Select(r => r.UserId)
+                .Distinct()
+                .ToListAsync(ct);
+
+            var directorNotReported = await directorUsersQuery
+                .Where(u => !todayDirectorReporterIds.Contains(u.Id))
+                .Select(u => new ActivityLogEntry
+                {
+                    Id = u.Id,
+                    FullName = u.FullName,
+                    Position = "Director",
+                })
+                .ToListAsync(ct);
+
+            notReported.AddRange(directorNotReported);
+        }
+
         await SendAsync(new ActivityLogResponse
         {
             Date = today.ToString("yyyy-MM-dd"),

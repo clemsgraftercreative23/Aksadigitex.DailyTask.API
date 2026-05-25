@@ -5,6 +5,7 @@ using Domain;
 using System.Security.Claims;
 using Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using API.Users;
 
 namespace API.Reports;
 
@@ -98,10 +99,12 @@ public class GiveSolutionEndpoint : RoleAuthorizedEndpoint<GiveSolutionRequest, 
 
         var reportId = Route<int>("id");
 
-        if (req.IsHolding)
+        if (HttpContext.User.GetAccountType() == AuthAccountType.DirectorUser)
         {
-            HttpContext.Response.StatusCode = 501;
-            await HttpContext.Response.WriteAsJsonAsync(new { message = "Laporan Holding (director_reports) belum didukung di API ini." }, ct);
+            var directorUpdated = await _store.GiveSolutionDirectorReportAsync(reportId, req.DirectorSolution, req.ManagerNote, fullName, ct);
+            if (directorUpdated is null) { await SendNotFoundAsync(ct); return; }
+
+            await SendAsync(new UpdateReportStatusResponse { Item = directorUpdated.ToResponse() }, cancellation: ct);
             return;
         }
 

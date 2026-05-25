@@ -20,6 +20,8 @@ public class RemindAllRequest
     public List<int> UserIds { get; set; } = new();
 }
 
+internal sealed record ReminderRecipient(int Id, int? CompanyId, int? DepartmentId, string FcmToken, bool IsDirectorUser);
+
 public class RemindSingleEndpoint : Endpoint<RemindRequest>
 {
     private readonly AppDbContext _db;
@@ -85,19 +87,28 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
             return;
         }
 
-        var target = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId && u.IsActive, ct);
-        if (target is null)
+        var targetUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId && u.IsActive, ct);
+        var targetDirectorUser = targetUser is null
+            ? await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId && u.IsActive, ct)
+            : null;
+
+        if (targetUser is null && targetDirectorUser is null)
         {
             await SendAsync(new { success = false, message = "User tidak ditemukan atau akses ditolak." }, 400, ct);
             return;
         }
 
-        if ((roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi) && (target.DepartmentId != currentDepartmentId || target.CompanyId != currentCompanyId))
+        var targetCompanyId = targetUser?.CompanyId ?? targetDirectorUser?.CompanyId;
+        var targetDepartmentId = targetUser?.DepartmentId;
+        var targetIsDirectorUser = targetDirectorUser is not null;
+
+        if ((roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi)
+            && (targetIsDirectorUser || targetDepartmentId != currentDepartmentId || targetCompanyId != currentCompanyId))
         {
             await SendAsync(new { success = false, message = "Akses ditolak (Divisi berbeda)." }, 403, ct);
             return;
         }
-        if ((roleName == "super_admin" || roleEnum == UserRole.SuperAdmin) && target.CompanyId != currentCompanyId)
+        if ((roleName == "super_admin" || roleEnum == UserRole.SuperAdmin) && targetCompanyId != currentCompanyId)
         {
             await SendAsync(new { success = false, message = "Akses ditolak (Perusahaan berbeda)." }, 403, ct);
             return;
@@ -108,18 +119,33 @@ public class RemindSingleEndpoint : Endpoint<RemindRequest>
 
         try
         {
-            _db.Notifications.Add(new Domain.Notification
+            if (targetIsDirectorUser)
             {
-                RecipientUserId = targetUserId,
-                SenderType = "admin",
-                Message = message,
-                Type = "belum_lapor",
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-            });
+                _db.DirectorNotifications.Add(new Domain.DirectorNotification
+                {
+                    RecipientUserId = targetUserId,
+                    SenderType = "admin",
+                    Message = message,
+                    Type = "belum_lapor",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
+            else
+            {
+                _db.Notifications.Add(new Domain.Notification
+                {
+                    RecipientUserId = targetUserId,
+                    SenderType = "admin",
+                    Message = message,
+                    Type = "belum_lapor",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
             await _db.SaveChangesAsync(ct);
 
-            var fcmToken = target.FcmToken;
+            var fcmToken = targetUser?.FcmToken ?? targetDirectorUser?.FcmToken;
             await _fcm.SendAsync(fcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
 
             await SendAsync(new { success = true, message = "Pengingat berhasil dikirim." }, cancellation: ct);
@@ -203,15 +229,33 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
             return;
         }
 
-        IQueryable<Domain.User> verifyQuery = _db.Users.Where(u => req.UserIds.Contains(u.Id) && u.IsActive);
+        var requestedIds = req.UserIds.Distinct().ToList();
+
+        IQueryable<Domain.User> verifyQuery = _db.Users.Where(u => requestedIds.Contains(u.Id) && u.IsActive);
         if (roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi)
             verifyQuery = verifyQuery.Where(u => u.DepartmentId == currentDepartmentId && u.CompanyId == currentCompanyId);
         else if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin)
             verifyQuery = verifyQuery.Where(u => u.CompanyId == currentCompanyId);
 
-        var validUsers = await verifyQuery.Select(u => new { u.Id, u.FcmToken }).ToListAsync(ct);
-        var validIds = validUsers.Select(u => u.Id).ToList();
-        if (validIds.Count == 0)
+        var regularRecipients = await verifyQuery
+            .Select(u => new ReminderRecipient(u.Id, u.CompanyId, u.DepartmentId, u.FcmToken ?? string.Empty, false))
+            .ToListAsync(ct);
+
+        var regularIds = regularRecipients.Select(u => u.Id).ToHashSet();
+        IQueryable<DirectorUser> directorQuery = _db.DirectorUsers
+            .Where(u => requestedIds.Contains(u.Id) && !regularIds.Contains(u.Id) && u.IsActive);
+
+        if (roleName == "admin_divisi" || roleEnum == UserRole.AdminDivisi)
+            directorQuery = directorQuery.Where(u => false);
+        else if (roleName == "super_admin" || roleEnum == UserRole.SuperAdmin)
+            directorQuery = directorQuery.Where(u => u.CompanyId == currentCompanyId);
+
+        var directorRecipients = await directorQuery
+            .Select(u => new ReminderRecipient(u.Id, u.CompanyId, null, u.FcmToken, true))
+            .ToListAsync(ct);
+
+        var validRecipients = regularRecipients.Concat(directorRecipients).ToList();
+        if (validRecipients.Count == 0)
         {
             await SendAsync(new { success = false, message = "Tidak ada personil valid yang bisa diingatkan." }, 400, ct);
             return;
@@ -222,27 +266,42 @@ public class RemindAllEndpoint : Endpoint<RemindAllRequest>
 
         try
         {
-            foreach (var u in validUsers)
+            foreach (var u in validRecipients)
             {
-                _db.Notifications.Add(new Domain.Notification
+                if (u.IsDirectorUser)
                 {
-                    RecipientUserId = u.Id,
-                    SenderType = "admin",
-                    Message = message,
-                    Type = "belum_lapor",
-                    IsRead = false,
-                    CreatedAt = DateTime.UtcNow,
-                });
+                    _db.DirectorNotifications.Add(new Domain.DirectorNotification
+                    {
+                        RecipientUserId = u.Id,
+                        SenderType = "admin",
+                        Message = message,
+                        Type = "belum_lapor",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                    });
+                }
+                else
+                {
+                    _db.Notifications.Add(new Domain.Notification
+                    {
+                        RecipientUserId = u.Id,
+                        SenderType = "admin",
+                        Message = message,
+                        Type = "belum_lapor",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                    });
+                }
                 await _fcm.SendAsync(u.FcmToken, "Pengingat Laporan", message, "belum_lapor", null, ct);
             }
             await _db.SaveChangesAsync(ct);
 
-            await SendAsync(new { success = true, message = $"{validIds.Count} personil telah diingatkan." }, cancellation: ct);
+            await SendAsync(new { success = true, message = $"{validRecipients.Count} personil telah diingatkan." }, cancellation: ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "RemindAllEndpoint failed. currentUserId={CurrentUserId}, date={Date}, targetCount={TargetCount}",
-                currentUserId, date, validIds.Count);
+                currentUserId, date, validRecipients.Count);
             await SendAsync(new { success = false, message = "Pengingat gagal dikirim. Coba lagi." }, cancellation: ct);
         }
     }

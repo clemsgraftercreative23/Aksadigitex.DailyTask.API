@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using API.Auth;
 using Domain;
 using System.Security.Claims;
+using API.Users;
 
 namespace API.Reports;
 
@@ -47,6 +48,30 @@ public class RejectReportEndpoint : RoleAuthorizedEndpoint<RejectReportRequest, 
         var (deptId, companyId, fullName) = await _store.GetReviewerContextAsync(userId.Value, ct);
 
         var reportId = Route<int>("id");
+        if (HttpContext.User.GetAccountType() == AuthAccountType.DirectorUser)
+        {
+            var directorCheck = await _store.CanReviewDirectorReportAsync(reportId, role, companyId, ct);
+            if (!directorCheck.Allowed)
+            {
+                HttpContext.Response.StatusCode = 403;
+                await HttpContext.Response.WriteAsJsonAsync(new { message = directorCheck.ErrorMessage }, ct);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(req.Reason))
+            {
+                AddError("Reason is required.");
+                await SendErrorsAsync(cancellation: ct);
+                return;
+            }
+
+            var directorUpdated = await _store.RejectDirectorReportAsync(reportId, req.Reason.Trim(), fullName, ct);
+            if (directorUpdated is null) { await SendNotFoundAsync(ct); return; }
+
+            await SendAsync(new UpdateReportStatusResponse { Item = directorUpdated.ToResponse() }, cancellation: ct);
+            return;
+        }
+
         var check = await _store.CanReviewAsync(reportId, role, deptId, companyId, isApprove: false, ct);
         if (!check.Allowed)
         {

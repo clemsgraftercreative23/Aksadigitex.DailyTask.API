@@ -1,5 +1,6 @@
 using API.Auth;
 using API.Reports;
+using API.Users;
 using Domain;
 using FastEndpoints;
 using Infrastructure;
@@ -48,6 +49,62 @@ public class UrgentReportsEndpoint : RoleAuthorizedEndpointWithoutRequest<Urgent
     public override async Task HandleAsync(CancellationToken ct)
     {
         if (!await ValidateRoleAsync(ct)) return;
+
+        if (User.GetAccountType() == AuthAccountType.DirectorUser)
+        {
+            var currentUserId = User.GetUserId();
+            if (!currentUserId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+            var currentDirectorUser = await _db.DirectorUsers.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value, ct);
+            if (currentDirectorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+            IQueryable<DirectorReport> directorReportsQuery = _db.DirectorReports.AsNoTracking()
+                .Where(r => r.IsAskedDirector);
+
+            if (currentDirectorUser.Role == UserRole.SuperAdmin)
+            {
+                directorReportsQuery = directorReportsQuery
+                    .Join(_db.DirectorUsers.AsNoTracking(), r => r.UserId, u => u.Id, (r, u) => new { r, u })
+                    .Where(x => x.u.CompanyId == currentDirectorUser.CompanyId)
+                    .Select(x => x.r);
+            }
+
+            var directorReports = await directorReportsQuery
+                .OrderByDescending(r => r.CreatedAt)
+                .Take(50)
+                .ToListAsync(ct);
+
+            var directorUserIds = directorReports.Select(r => r.UserId).Distinct().ToList();
+            var urgentDirectorUsers = await _db.DirectorUsers.AsNoTracking()
+                .Where(u => directorUserIds.Contains(u.Id))
+                .ToListAsync(ct);
+            var urgentCompanies = await _db.Companies.AsNoTracking().ToListAsync(ct);
+
+            var directorItems = directorReports.Select(r =>
+            {
+                var u = urgentDirectorUsers.FirstOrDefault(x => x.Id == r.UserId);
+                return new UrgentReportItem
+                {
+                    Id = r.Id,
+                    TaskDescription = r.TaskDescription,
+                    Issue = r.Issue,
+                    Solution = r.Solution,
+                    Result = r.Result,
+                    DirectorSolution = r.DirectorSolution,
+                    ManagerNote = r.ManagerNote,
+                    AttachmentPath = r.AttachmentPath,
+                    FullName = u?.FullName ?? "",
+                    Position = "Director",
+                    CompanyName = urgentCompanies.FirstOrDefault(c => c.Id == u?.CompanyId)?.CompanyName,
+                    ReportDate = r.ReportDate.ToString("yyyy-MM-dd"),
+                    IsSolved = !string.IsNullOrEmpty(r.DirectorSolution),
+                };
+            }).ToList();
+
+            await SendAsync(new UrgentReportsResponse { UrgentReports = directorItems }, cancellation: ct);
+            return;
+        }
 
         var reports = await _db.DailyReports.AsNoTracking()
             .Where(r => r.IsAskedDirector)

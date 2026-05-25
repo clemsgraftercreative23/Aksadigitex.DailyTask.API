@@ -5,6 +5,7 @@ using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using API.Reports;
+using API.Users;
 
 namespace API.Dashboard;
 
@@ -54,8 +55,9 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
     {
         if (!await ValidateRoleAsync(ct)) return;
 
-        var userId = User.GetUserId();
+        var userId = UserClaims.GetUserId(User);
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+        var accountType = UserClaims.GetAccountType(User);
 
         var currentUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
 
@@ -80,6 +82,59 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
         }
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var todayStr = today.ToString("yyyy-MM-dd");
+
+        if (accountType == AuthAccountType.DirectorUser)
+        {
+            IQueryable<DirectorReport> directorReportQuery = _db.DirectorReports.AsNoTracking();
+            IQueryable<DirectorUser> directorUserQuery = _db.DirectorUsers.AsNoTracking().Where(u => u.IsActive);
+
+            if (role == UserRole.User)
+            {
+                directorReportQuery = directorReportQuery.Where(r => r.UserId == userId.Value);
+                directorUserQuery = directorUserQuery.Where(u => u.Id == userId.Value);
+            }
+            else if (role is UserRole.AdminDivisi or UserRole.SuperAdmin)
+            {
+                directorReportQuery = directorReportQuery
+                    .Join(_db.DirectorUsers.AsNoTracking(), r => r.UserId, u => u.Id, (r, u) => new { r, u })
+                    .Where(x => x.u.CompanyId == currentCompanyId)
+                    .Select(x => x.r);
+                directorUserQuery = directorUserQuery.Where(u => u.CompanyId == currentCompanyId);
+            }
+
+            var directorTotalReports = await directorReportQuery.CountAsync(ct);
+            var directorTodayReports = await directorReportQuery.Where(r => r.ReportDate == today).CountAsync(ct);
+            var directorTotalEmployees = await directorUserQuery.CountAsync(ct);
+
+            var directorStatusCounts = await directorReportQuery
+                .GroupBy(r => r.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToListAsync(ct);
+
+            var directorTodayReporterIds = await directorReportQuery
+                .Where(r => r.ReportDate == today)
+                .Select(r => r.UserId)
+                .Distinct()
+                .ToListAsync(ct);
+
+            var directorNotReportedCount = await directorUserQuery
+                .Where(u => u.RoleId <= (int)UserRole.AdminDivisi && !directorTodayReporterIds.Contains(u.Id))
+                .CountAsync(ct);
+
+            await SendAsync(new DashboardResponse
+            {
+                TotalReports = directorTotalReports,
+                TodayReports = directorTodayReports,
+                NotReportedCount = directorNotReportedCount,
+                TotalEmployees = directorTotalEmployees,
+                DraftCount = directorStatusCounts.FirstOrDefault(s => s.Status == "draft")?.Count ?? 0,
+                SubmittedCount = directorStatusCounts.FirstOrDefault(s => s.Status == "submitted")?.Count ?? 0,
+                ApprovedCount = directorStatusCounts.FirstOrDefault(s => s.Status == "approved")?.Count ?? 0,
+                RejectedCount = directorStatusCounts.FirstOrDefault(s => s.Status == "rejected")?.Count ?? 0,
+                Date = todayStr,
+            }, cancellation: ct);
+            return;
+        }
 
         IQueryable<DailyReport> reportQuery = _db.DailyReports.AsNoTracking();
         IQueryable<User> userQuery = _db.Users.AsNoTracking().Where(u => u.IsActive);

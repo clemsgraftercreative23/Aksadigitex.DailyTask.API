@@ -55,12 +55,56 @@ public class AdminUpdateUserEndpoint : RoleAuthorizedEndpoint<UpdateUserRequest,
         var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, ct);
         if (user is null)
         {
-            await SendNotFoundAsync(ct);
+            var directorUser = await _db.DirectorUsers.FirstOrDefaultAsync(x => x.Id == userId, ct);
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            var directorEmail = req.Email.Trim().ToLowerInvariant();
+            var duplicateDirector = await _db.Users.AnyAsync(x => x.Email == directorEmail, ct)
+                || await _db.DirectorUsers.AnyAsync(x => x.Email == directorEmail && x.Id != userId, ct);
+            if (duplicateDirector)
+            {
+                AddError("Email is already used by another user.");
+                await SendErrorsAsync(cancellation: ct);
+                return;
+            }
+
+            directorUser.FullName = req.FullName.Trim();
+            directorUser.Email = directorEmail;
+            directorUser.Role = (UserRole)req.RoleId;
+            directorUser.CompanyId = req.CompanyId;
+            directorUser.MfaEnabled = req.MfaEnabled;
+            if (req.NotifThresholdMin.HasValue) directorUser.NotifThresholdMin = req.NotifThresholdMin.Value;
+            if (req.NotifThresholdMax.HasValue) directorUser.NotifThresholdMax = req.NotifThresholdMax.Value;
+            if (req.UrgencyEmail is not null) directorUser.UrgencyEmail = req.UrgencyEmail;
+            if (req.EnableUrgensi.HasValue) directorUser.EnableUrgensi = req.EnableUrgensi.Value;
+
+            if (!string.IsNullOrWhiteSpace(req.Password))
+            {
+                directorUser.PasswordHash = PasswordHasher.Hash(req.Password);
+            }
+
+            await _db.SaveChangesAsync(ct);
+
+            var roleName = await _db.Roles
+                .AsNoTracking()
+                .Where(x => x.Id == directorUser.RoleId)
+                .Select(x => x.RoleName)
+                .FirstOrDefaultAsync(ct);
+
+            await SendAsync(new UserDetailResponse
+            {
+                Item = directorUser.ToUserItemResponse(roleName)
+            }, cancellation: ct);
             return;
         }
 
         var email = req.Email.Trim().ToLowerInvariant();
-        var duplicate = await _db.Users.AnyAsync(x => x.Email == email && x.Id != userId, ct);
+        var duplicate = await _db.Users.AnyAsync(x => x.Email == email && x.Id != userId, ct)
+            || await _db.DirectorUsers.AnyAsync(x => x.Email == email, ct);
         if (duplicate)
         {
             AddError("Email is already used by another user.");

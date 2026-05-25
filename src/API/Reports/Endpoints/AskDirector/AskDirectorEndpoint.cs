@@ -1,6 +1,7 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
+using API.Users;
 using Domain;
 using System.Security.Claims;
 
@@ -46,7 +47,10 @@ public class AskDirectorEndpoint : EndpointWithoutRequest<object>
         var (deptId, companyId, fullName) = await _store.GetReviewerContextAsync(userId.Value, ct);
 
         var reportId = Route<int>("id");
-        var ok = await _store.AskDirectorAsync(reportId, userId.Value, role, fullName, deptId, companyId, ct);
+        var accountType = HttpContext.User.GetAccountType();
+        var ok = accountType == AuthAccountType.DirectorUser
+            ? await _store.AskDirectorReportAsync(reportId, userId.Value, role, fullName, companyId, ct)
+            : await _store.AskDirectorAsync(reportId, userId.Value, role, fullName, deptId, companyId, ct);
 
         if (!ok)
         {

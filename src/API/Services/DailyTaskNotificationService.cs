@@ -121,6 +121,26 @@ public class DailyTaskNotificationService : BackgroundService
         }
         
         _logger.LogInformation("Sent {Count} hourly reminders.", usersWithoutReport.Count);
+
+        var directorUsersWithoutReport = await dbContext.DirectorUsers
+            .Where(u => u.IsActive &&
+                        !string.IsNullOrEmpty(u.FcmToken) &&
+                        (u.RoleId == (int)UserRole.User || u.RoleId == (int)UserRole.AdminDivisi || u.RoleId == (int)UserRole.SuperAdmin))
+            .Where(u => !dbContext.DirectorReports.Any(r => r.UserId == u.Id && r.ReportDate == reportDate))
+            .ToListAsync(stoppingToken);
+
+        foreach (var user in directorUsersWithoutReport)
+        {
+            await pushService.SendAsync(
+                user.FcmToken,
+                "Pengingat Daily Task",
+                $"Halo {user.FullName}, kamu belum mengisi laporan Daily Task untuk hari ini. Segera isi laporannya ya!",
+                "reminder_daily_task",
+                null,
+                stoppingToken);
+        }
+
+        _logger.LogInformation("Sent {Count} director hourly reminders.", directorUsersWithoutReport.Count);
     }
 
     private async Task ProcessBossEscalation(AppDbContext dbContext, IFirebasePushService pushService, DateOnly reportDate, CancellationToken stoppingToken)
@@ -132,8 +152,6 @@ public class DailyTaskNotificationService : BackgroundService
             .Where(u => u.IsActive && u.RoleId == (int)UserRole.User)
             .Where(u => !dbContext.DailyReports.Any(r => r.UserId == u.Id && r.ReportDate == reportDate))
             .ToListAsync(stoppingToken);
-
-        if (!lazyUsers.Any()) return;
 
         // Group by CompanyId to optimize notifications
         var usersByCompany = lazyUsers.GroupBy(u => u.CompanyId);
@@ -171,6 +189,36 @@ public class DailyTaskNotificationService : BackgroundService
                 escalationCount++;
             }
         }
+
+        var lazyDirectorUsers = await dbContext.DirectorUsers
+            .Where(u => u.IsActive && u.RoleId == (int)UserRole.User)
+            .Where(u => !dbContext.DirectorReports.Any(r => r.UserId == u.Id && r.ReportDate == reportDate))
+            .ToListAsync(stoppingToken);
+
+        foreach (var group in lazyDirectorUsers.GroupBy(u => u.CompanyId))
+        {
+            var bosses = await dbContext.DirectorUsers
+                .Where(u => u.IsActive &&
+                            u.CompanyId == group.Key &&
+                            !string.IsNullOrEmpty(u.FcmToken) &&
+                            (u.RoleId == (int)UserRole.AdminDivisi || u.RoleId == (int)UserRole.SuperAdmin))
+                .ToListAsync(stoppingToken);
+
+            var lazyUserNames = string.Join(", ", group.Select(u => u.FullName));
+            var message = $"Terdapat staff holding yang belum mengisi laporan hari ini: {lazyUserNames}. Mohon ditindaklanjuti.";
+
+            foreach (var boss in bosses)
+            {
+                await pushService.SendAsync(
+                    boss.FcmToken,
+                    "Eskalasi Laporan Staff",
+                    message,
+                    "escalation_daily_task",
+                    null,
+                    stoppingToken);
+                escalationCount++;
+            }
+        }
         
         _logger.LogInformation("Sent {Count} boss escalations.", escalationCount);
     }
@@ -184,28 +232,55 @@ public class DailyTaskNotificationService : BackgroundService
             .Where(u => !dbContext.DailyReports.Any(r => r.UserId == u.Id && r.ReportDate == yesterdayDate))
             .ToListAsync(stoppingToken);
 
-        if (!lazyManagement.Any()) return;
-
         var superDuperAdmins = await dbContext.Users
             .Where(u => u.IsActive && !string.IsNullOrEmpty(u.FcmToken) && u.RoleId == (int)UserRole.SuperDuperAdmin)
             .ToListAsync(stoppingToken);
 
-        if (!superDuperAdmins.Any()) return;
-
-        var details = string.Join("\n", lazyManagement.Select(u => $"- {u.FullName} (Role: {(UserRole)u.RoleId})"));
-        var message = $"Berikut adalah daftar Admin/SuperAdmin yang belum mengisi laporan untuk tanggal {yesterdayDate:dd/MM/yyyy}:\n{details}";
-
-        foreach (var sda in superDuperAdmins)
+        if (lazyManagement.Any() && superDuperAdmins.Any())
         {
-            await pushService.SendAsync(
-                sda.FcmToken, 
-                "Eskalasi Keterlambatan Laporan Manajemen", 
-                message, 
-                "super_duper_escalation", 
-                null, 
-                stoppingToken);
+            var details = string.Join("\n", lazyManagement.Select(u => $"- {u.FullName} (Role: {(UserRole)u.RoleId})"));
+            var message = $"Berikut adalah daftar Admin/SuperAdmin yang belum mengisi laporan untuk tanggal {yesterdayDate:dd/MM/yyyy}:\n{details}";
+
+            foreach (var sda in superDuperAdmins)
+            {
+                await pushService.SendAsync(
+                    sda.FcmToken,
+                    "Eskalasi Keterlambatan Laporan Manajemen",
+                    message,
+                    "super_duper_escalation",
+                    null,
+                    stoppingToken);
+            }
+        }
+
+        var lazyDirectorManagement = await dbContext.DirectorUsers
+            .Where(u => u.IsActive && (u.RoleId == (int)UserRole.AdminDivisi || u.RoleId == (int)UserRole.SuperAdmin))
+            .Where(u => !dbContext.DirectorReports.Any(r => r.UserId == u.Id && r.ReportDate == yesterdayDate))
+            .ToListAsync(stoppingToken);
+
+        var directorSuperDuperAdmins = await dbContext.DirectorUsers
+            .Where(u => u.IsActive && !string.IsNullOrEmpty(u.FcmToken) && u.RoleId == (int)UserRole.SuperDuperAdmin)
+            .ToListAsync(stoppingToken);
+
+        if (lazyDirectorManagement.Any() && directorSuperDuperAdmins.Any())
+        {
+            var directorDetails = string.Join("\n", lazyDirectorManagement.Select(u => $"- {u.FullName} (Role: {(UserRole)u.RoleId})"));
+            var directorMessage = $"Berikut adalah daftar Admin/SuperAdmin holding yang belum mengisi laporan untuk tanggal {yesterdayDate:dd/MM/yyyy}:\n{directorDetails}";
+
+            foreach (var sda in directorSuperDuperAdmins)
+            {
+                await pushService.SendAsync(
+                    sda.FcmToken,
+                    "Eskalasi Keterlambatan Laporan Manajemen",
+                    directorMessage,
+                    "super_duper_escalation",
+                    null,
+                    stoppingToken);
+            }
         }
         
-        _logger.LogInformation("Sent {Count} super duper escalations.", superDuperAdmins.Count);
+        _logger.LogInformation("Sent {Count} super duper escalations and {DirectorCount} director super duper escalations.",
+            superDuperAdmins.Count,
+            lazyDirectorManagement.Any() ? directorSuperDuperAdmins.Count : 0);
     }
 }

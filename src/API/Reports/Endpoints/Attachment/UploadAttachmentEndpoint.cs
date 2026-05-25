@@ -45,18 +45,28 @@ public class UploadAttachmentEndpoint : RoleAuthorizedEndpoint<UploadAttachmentR
 
         // Determine which report table the ID belongs to
         bool isDirectorReport = false;
-        var dailyReport = await _store.GetByIdAsync(reportId);
         Domain.DirectorReport? directorReport = null;
+        var dailyReport = accountType == AuthAccountType.DirectorUser
+            ? null
+            : await _store.GetByIdAsync(reportId);
 
         if (dailyReport is null)
         {
             directorReport = await _store.GetDirectorReportByIdAsync(reportId, ct);
-            if (directorReport is null)
+            if (directorReport is not null)
+            {
+                isDirectorReport = true;
+            }
+            else if (accountType == AuthAccountType.DirectorUser)
             {
                 await SendNotFoundAsync(ct);
                 return;
             }
-            isDirectorReport = true;
+            else
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
         }
 
         if (req.File is null || req.File.Length == 0)

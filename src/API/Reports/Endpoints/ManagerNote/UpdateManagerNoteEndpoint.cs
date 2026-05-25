@@ -1,6 +1,7 @@
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using API.Auth;
+using API.Users;
 using Domain;
 
 namespace API.Reports;
@@ -40,6 +41,19 @@ public class UpdateManagerNoteEndpoint : RoleAuthorizedEndpoint<UpdateManagerNot
             return;
 
         var reportId = Route<int>("id");
+        if (User.GetAccountType() == AuthAccountType.DirectorUser)
+        {
+            var directorUpdated = await _store.UpdateDirectorManagerNoteAsync(reportId, req.ManagerNote?.Trim() ?? string.Empty, ct);
+            if (directorUpdated is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            await SendAsync(new UpdateReportStatusResponse { Item = directorUpdated.ToResponse() }, cancellation: ct);
+            return;
+        }
+
         var updated = await _store.UpdateManagerNoteAsync(reportId, req.ManagerNote?.Trim() ?? string.Empty, ct);
         if (updated is null)
         {

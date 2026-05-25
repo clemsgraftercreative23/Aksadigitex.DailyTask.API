@@ -8,7 +8,7 @@ public interface IFirebasePushService
     /// <summary>
     /// Send push notification to device token. No-op if Firebase not configured or token empty.
     /// </summary>
-    Task SendAsync(string? token, string title, string body, string type, int? referenceId = null, CancellationToken ct = default);
+    Task<bool> SendAsync(string? token, string title, string body, string type, int? referenceId = null, CancellationToken ct = default);
 }
 
 public class FirebasePushService : IFirebasePushService
@@ -22,10 +22,10 @@ public class FirebasePushService : IFirebasePushService
         _options = options.Value;
     }
 
-    public async Task SendAsync(string? token, string title, string body, string type, int? referenceId = null, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string? token, string title, string body, string type, int? referenceId = null, CancellationToken ct = default)
     {
         if (!_options.Enabled || FirebaseApp.DefaultInstance == null || string.IsNullOrWhiteSpace(token))
-            return;
+            return false;
 
         try
         {
@@ -57,15 +57,18 @@ public class FirebasePushService : IFirebasePushService
 
             await FirebaseMessaging.DefaultInstance.SendAsync(message, ct);
             _logger.LogDebug("FCM sent to token (type={Type})", type);
+            return true;
         }
         catch (FirebaseMessagingException ex)
         {
             _logger.LogWarning(ex, "FCM send failed for type={Type}: {Error}", type, ex.MessagingErrorCode);
             // Invalid/expired token - caller may want to clear fcm_token
+            return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "FCM send failed for type={Type}", type);
+            return false;
         }
     }
 }

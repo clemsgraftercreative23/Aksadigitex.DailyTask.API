@@ -155,6 +155,28 @@ public class ReportStore
         return new ReviewCheckResult(true, null);
     }
 
+    public async Task<ReviewCheckResult> CanReviewDirectorReportAsync(int reportId, UserRole reviewerRole, int? reviewerCompanyId, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports.AsNoTracking().FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null) return new ReviewCheckResult(false, "Laporan tidak ditemukan.");
+
+        var reportUser = await _context.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+        if (reportUser is null) return new ReviewCheckResult(false, "Laporan tidak ditemukan.");
+
+        var creatorRole = reportUser.Role;
+        if (creatorRole == UserRole.AdminDivisi && reviewerRole == UserRole.AdminDivisi)
+            return new ReviewCheckResult(false, "Admin Divisi tidak dapat menyetujui laporan Admin Divisi.");
+        if (creatorRole == UserRole.SuperAdmin && reviewerRole != UserRole.SuperDuperAdmin)
+            return new ReviewCheckResult(false, "Laporan Super Admin hanya dapat disetujui oleh Super Duper Admin.");
+        if (creatorRole == UserRole.SuperDuperAdmin && reviewerRole != UserRole.SuperDuperAdmin)
+            return new ReviewCheckResult(false, "Laporan Super Duper Admin hanya dapat disetujui oleh Super Duper Admin.");
+
+        if ((reviewerRole is UserRole.AdminDivisi or UserRole.SuperAdmin) && reportUser.CompanyId != reviewerCompanyId)
+            return new ReviewCheckResult(false, "Akses ditolak (Perusahaan berbeda).");
+
+        return new ReviewCheckResult(true, null);
+    }
+
     public async Task<DailyReport?> CreateAsync(int userId, DateOnly reportDate, TimeOnly reportTime, string taskDescription, string issue, string solution, string result, string status = "draft", int? departmentId = null, CancellationToken ct = default)
     {
         var normalizedStatus = status?.ToLowerInvariant() == "submitted" ? "submitted" : "draft";
@@ -381,6 +403,52 @@ public class ReportStore
         return report;
     }
 
+    public async Task<DirectorReport?> ApproveDirectorReportAsync(int id, string note, string reviewerName, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (report is null) return null;
+
+        report.Status = "approved";
+        report.ManagerNote = note;
+        _context.DirectorReports.Update(report);
+        await _context.SaveChangesAsync(ct);
+
+        try
+        {
+            var approveMsg = $"Laporan Anda telah disetujui (Approved) oleh {reviewerName}.";
+            _context.DirectorNotifications.Add(new DirectorNotification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = approveMsg,
+                Type = "laporan_diapprove",
+                ReferenceId = id,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _context.SaveChangesAsync(ct);
+
+            var recipient = await _context.DirectorUsers.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipient,
+                "Laporan Disetujui",
+                approveMsg,
+                "laporan_diapprove",
+                id,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ApproveDirectorReportAsync notification/FCM failed. reportId={ReportId}, reviewerName={ReviewerName}", id, reviewerName);
+        }
+
+        return report;
+    }
+
     public async Task<DailyReport?> RejectAsync(int id, string reason, string reviewerName, CancellationToken ct = default)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -416,6 +484,52 @@ public class ReportStore
         catch (Exception ex)
         {
             _logger.LogError(ex, "RejectAsync notification/FCM failed. reportId={ReportId}", id);
+        }
+
+        return report;
+    }
+
+    public async Task<DirectorReport?> RejectDirectorReportAsync(int id, string reason, string reviewerName, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (report is null) return null;
+
+        report.Status = "rejected";
+        report.ManagerNote = reason;
+        _context.DirectorReports.Update(report);
+        await _context.SaveChangesAsync(ct);
+
+        try
+        {
+            var rejectMsg = $"Laporan Anda ditolak/perlu revisi. Catatan: {reason}";
+            _context.DirectorNotifications.Add(new DirectorNotification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = rejectMsg,
+                Type = "laporan_direview",
+                ReferenceId = id,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _context.SaveChangesAsync(ct);
+
+            var recipientReject = await _context.DirectorUsers.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipientReject,
+                "Laporan Ditolak",
+                rejectMsg,
+                "laporan_direview",
+                id,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RejectDirectorReportAsync notification/FCM failed. reportId={ReportId}", id);
         }
 
         return report;
@@ -459,6 +573,50 @@ public class ReportStore
         catch (Exception ex)
         {
             _logger.LogError(ex, "GiveSolutionAsync notification/FCM failed. reportId={ReportId}", reportId);
+        }
+
+        return report;
+    }
+
+    public async Task<DirectorReport?> GiveSolutionDirectorReportAsync(int reportId, string directorSolution, string? managerNote, string reviewerName, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports.Include(r => r.Attachments).FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null) return null;
+
+        report.DirectorSolution = directorSolution;
+        report.ManagerNote = managerNote ?? report.ManagerNote;
+        _context.DirectorReports.Update(report);
+        await _context.SaveChangesAsync(ct);
+
+        try
+        {
+            var solMsg = "SDA telah memberikan solusi untuk laporan Anda.";
+            _context.DirectorNotifications.Add(new DirectorNotification
+            {
+                RecipientUserId = report.UserId,
+                SenderType = "system",
+                Message = solMsg,
+                Type = "solution_ready",
+                ReferenceId = reportId,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _context.SaveChangesAsync(ct);
+
+            var recipientSolution = await _context.DirectorUsers.AsNoTracking()
+                .Where(u => u.Id == report.UserId)
+                .Select(u => u.FcmToken)
+                .FirstOrDefaultAsync(ct);
+            await _fcm.SendAsync(recipientSolution,
+                "Solusi Tersedia",
+                solMsg,
+                "solution_ready",
+                reportId,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GiveSolutionDirectorReportAsync notification/FCM failed. reportId={ReportId}", reportId);
         }
 
         return report;
@@ -568,6 +726,101 @@ public class ReportStore
         return true;
     }
 
+    public async Task<bool> AskDirectorReportAsync(int reportId, int currentUserId, UserRole currentRole, string currentUserName, int? companyId, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports.FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null) return false;
+
+        try
+        {
+            report.IsAskedDirector = true;
+            _context.DirectorReports.Update(report);
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AskDirectorReportAsync failed to update report.IsAskedDirector. reportId={ReportId}", reportId);
+            return false;
+        }
+
+        try
+        {
+            var reportUser = await _context.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == report.UserId, ct);
+            var issueText = (report.Issue ?? report.TaskDescription ?? "").Length > 80
+                ? (report.Issue ?? report.TaskDescription ?? "").Substring(0, 80) + "..."
+                : (report.Issue ?? report.TaskDescription ?? "");
+
+            var msgUser = $"[BANTUAN] {reportUser?.FullName ?? ""} meminta bantuan untuk laporan: \"{issueText}\"";
+            var prefix = currentRole == UserRole.AdminDivisi ? "[URGENT] Admin " : "[URGENT] ";
+            var msgAdmin = $"{prefix}{currentUserName} meminta solusi: \"{issueText}\"";
+
+            if (currentRole == UserRole.User)
+            {
+                var admins = await _context.DirectorUsers
+                    .AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.AdminDivisi && u.CompanyId == companyId && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+
+                foreach (var a in admins)
+                {
+                    _context.DirectorNotifications.Add(new DirectorNotification
+                    {
+                        RecipientUserId = a.Id,
+                        SenderType = "system",
+                        Message = msgUser,
+                        Type = "urgent_solution",
+                        ReferenceId = reportId,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(a.FcmToken,
+                        "Permintaan Bantuan",
+                        msgUser,
+                        "urgent_solution",
+                        reportId,
+                        ct);
+                }
+            }
+            else
+            {
+                var sdas = await _context.DirectorUsers
+                    .AsNoTracking()
+                    .Where(u => u.RoleId == (int)UserRole.SuperDuperAdmin && u.IsActive)
+                    .Select(u => new { u.Id, u.FcmToken })
+                    .ToListAsync(ct);
+
+                foreach (var s in sdas)
+                {
+                    _context.DirectorNotifications.Add(new DirectorNotification
+                    {
+                        RecipientUserId = s.Id,
+                        SenderType = "system",
+                        Message = msgAdmin,
+                        Type = "urgent_solution",
+                        ReferenceId = reportId,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    await _fcm.SendAsync(s.FcmToken,
+                        "Permintaan Solusi Urgent",
+                        msgAdmin,
+                        "urgent_solution",
+                        reportId,
+                        ct);
+                }
+            }
+
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AskDirectorReportAsync notification/FCM failed. reportId={ReportId}", reportId);
+        }
+
+        return true;
+    }
+
     public async Task<DailyReport?> SetRatingAsync(int id, int? taskRating, int? issueRating, int? solutionRating)
     {
         var report = await _context.DailyReports.FirstOrDefaultAsync(x => x.Id == id);
@@ -601,6 +854,20 @@ public class ReportStore
 
         report.ManagerNote = managerNote;
         _context.DailyReports.Update(report);
+        await _context.SaveChangesAsync(ct);
+        return report;
+    }
+
+    public async Task<DirectorReport?> UpdateDirectorManagerNoteAsync(int reportId, string managerNote, CancellationToken ct = default)
+    {
+        var report = await _context.DirectorReports
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(x => x.Id == reportId, ct);
+        if (report is null)
+            return null;
+
+        report.ManagerNote = managerNote;
+        _context.DirectorReports.Update(report);
         await _context.SaveChangesAsync(ct);
         return report;
     }

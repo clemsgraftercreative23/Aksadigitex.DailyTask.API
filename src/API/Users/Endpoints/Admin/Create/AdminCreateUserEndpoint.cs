@@ -53,7 +53,8 @@ public class AdminCreateUserEndpoint : RoleAuthorizedEndpoint<CreateUserRequest,
         }
 
         var email = req.Email.Trim().ToLowerInvariant();
-        var exists = await _db.Users.AnyAsync(x => x.Email == email, ct);
+        var exists = await _db.Users.AnyAsync(x => x.Email == email, ct)
+            || await _db.DirectorUsers.AnyAsync(x => x.Email == email, ct);
         if (exists)
         {
             AddError("Email is already used by another user.");

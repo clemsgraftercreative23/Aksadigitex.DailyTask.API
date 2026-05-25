@@ -41,7 +41,26 @@ public class AdminSetUserStatusEndpoint : RoleAuthorizedEndpoint<UpdateUserStatu
 
         if (user is null)
         {
-            await SendNotFoundAsync(ct);
+            var directorUser = await _db.DirectorUsers.FirstOrDefaultAsync(x => x.Id == userId, ct);
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            directorUser.IsActive = req.IsActive;
+            await _db.SaveChangesAsync(ct);
+
+            var roleName = await _db.Roles
+                .AsNoTracking()
+                .Where(x => x.Id == directorUser.RoleId)
+                .Select(x => x.RoleName)
+                .FirstOrDefaultAsync(ct);
+
+            await SendAsync(new UserDetailResponse
+            {
+                Item = directorUser.ToUserItemResponse(roleName)
+            }, cancellation: ct);
             return;
         }
 

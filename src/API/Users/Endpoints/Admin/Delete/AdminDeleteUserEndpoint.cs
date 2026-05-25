@@ -41,7 +41,17 @@ public class AdminDeleteUserEndpoint : RoleAuthorizedEndpointWithoutRequest<Empt
 
         if (user is null)
         {
-            await SendNotFoundAsync(ct);
+            var directorUser = await _db.DirectorUsers.FirstOrDefaultAsync(x => x.Id == userId, ct);
+            if (directorUser is null)
+            {
+                await SendNotFoundAsync(ct);
+                return;
+            }
+
+            _db.DirectorUsers.Remove(directorUser);
+            await _db.SaveChangesAsync(ct);
+
+            await SendNoContentAsync(ct);
             return;
         }
 
