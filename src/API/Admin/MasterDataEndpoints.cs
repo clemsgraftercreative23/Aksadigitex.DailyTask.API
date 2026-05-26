@@ -50,6 +50,7 @@ public class ListCompaniesEndpoint : RoleAuthorizedEndpointWithoutRequest<object
     private readonly AppDbContext _db;
     public ListCompaniesEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() => new[] { UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.MasterDataRead };
 
     public override void Configure()
     {
@@ -151,6 +152,7 @@ public class ListDepartmentsEndpoint : RoleAuthorizedEndpointWithoutRequest<obje
     private readonly AppDbContext _db;
     public ListDepartmentsEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() => new[] { UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.MasterDataRead };
 
     public override void Configure()
     {
@@ -282,6 +284,7 @@ public class ListPeriodsEndpoint : RoleAuthorizedEndpointWithoutRequest<object>
     private readonly AppDbContext _db;
     public ListPeriodsEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() => new[] { UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.MasterDataRead };
 
     public override void Configure()
     {
@@ -406,6 +409,8 @@ public class ListRolesEndpoint : EndpointWithoutRequest<object>
 
     public override async Task HandleAsync(CancellationToken ct)
     {
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, OAuthScopes.MasterDataRead)) return;
+
         var roles = await _db.Roles.AsNoTracking().OrderBy(r => r.Id)
             .Select(r => new RoleItemResponse { Id = r.Id, RoleName = r.RoleName }).ToListAsync(ct);
         await SendAsync(new { roles }, cancellation: ct);

@@ -16,6 +16,7 @@ public abstract class RoleAuthorizedEndpoint<TRequest, TResponse> : Endpoint<TRe
     /// Return null atau array kosong untuk allow semua authenticated users.
     /// </summary>
     protected virtual UserRole[]? GetAllowedRoles() => null;
+    protected virtual string[] GetAllowedOAuthScopes() => Array.Empty<string>();
 
     /// <summary>
     /// Panggil method ini di awal HandleAsync untuk validasi role.
@@ -24,6 +25,9 @@ public abstract class RoleAuthorizedEndpoint<TRequest, TResponse> : Endpoint<TRe
     protected async Task<bool> ValidateRoleAsync(CancellationToken ct)
     {
         var allowedRoles = GetAllowedRoles();
+
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, GetAllowedOAuthScopes()))
+            return false;
 
         // Jika tidak ada restriction, allow semua authenticated users
         if (allowedRoles == null || allowedRoles.Length == 0)
@@ -79,6 +83,7 @@ public abstract class RoleAuthorizedEndpointWithoutRequest<TResponse> : Endpoint
     /// Override ini untuk menentukan role mana saja yang boleh mengakses endpoint
     /// </summary>
     protected virtual UserRole[]? GetAllowedRoles() => null;
+    protected virtual string[] GetAllowedOAuthScopes() => Array.Empty<string>();
 
     /// <summary>
     /// Panggil method ini di awal HandleAsync untuk validasi role
@@ -86,6 +91,9 @@ public abstract class RoleAuthorizedEndpointWithoutRequest<TResponse> : Endpoint
     protected async Task<bool> ValidateRoleAsync(CancellationToken ct)
     {
         var allowedRoles = GetAllowedRoles();
+
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, GetAllowedOAuthScopes()))
+            return false;
 
         if (allowedRoles == null || allowedRoles.Length == 0)
         {

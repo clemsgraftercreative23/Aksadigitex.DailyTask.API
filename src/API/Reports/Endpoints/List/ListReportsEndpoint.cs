@@ -1,4 +1,5 @@
 #nullable enable
+using API.Auth;
 using API.Users;
 using Domain;
 using FastEndpoints;
@@ -33,11 +34,6 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var userId = User.GetUserId();
-        if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
-
-        var accountType = User.GetAccountType();
-
         // Parse query parameters once at the top
         var page = Query<int?>("page", isRequired: false).GetValueOrDefault(1);
         var pageSize = Query<int?>("pageSize", isRequired: false).GetValueOrDefault(20);
@@ -49,6 +45,21 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
 
         page = page <= 0 ? 1 : page;
         pageSize = pageSize <= 0 ? 20 : Math.Min(pageSize, 100);
+
+        if (User.IsClientCredentials())
+        {
+            if (!await User.ValidateClientScopeAsync(HttpContext, ct, OAuthScopes.ReportsRead)) return;
+
+            await SendAsync(
+                await BuildClientReportsResponseAsync(page, pageSize, status, dateFrom, dateTo, search, filterUserId, ct),
+                cancellation: ct);
+            return;
+        }
+
+        var userId = User.GetUserId();
+        if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
+
+        var accountType = User.GetAccountType();
 
         // ---------------------------------------------------------
         // DIRECTOR USER FLOW: Query DirectorReports
@@ -290,5 +301,134 @@ public class ListReportsEndpoint : EndpointWithoutRequest<ListReportsResponse>
             TotalCount = totalCount,
             Items = responseItems
         }, cancellation: ct);
+    }
+
+    private async Task<ListReportsResponse> BuildClientReportsResponseAsync(
+        int page,
+        int pageSize,
+        string? status,
+        string? dateFrom,
+        string? dateTo,
+        string? search,
+        int? filterUserId,
+        CancellationToken ct)
+    {
+        IQueryable<DailyReport> dailyQuery = _db.DailyReports.AsNoTracking().Include(r => r.Attachments);
+        IQueryable<DirectorReport> directorQuery = _db.DirectorReports.AsNoTracking().Include(r => r.Attachments);
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalizedStatus = status.ToLowerInvariant();
+            dailyQuery = dailyQuery.Where(r => r.Status == normalizedStatus);
+            directorQuery = directorQuery.Where(r => r.Status == normalizedStatus);
+        }
+
+        if (!string.IsNullOrWhiteSpace(dateFrom) && DateOnly.TryParse(dateFrom, out var df))
+        {
+            dailyQuery = dailyQuery.Where(r => r.ReportDate >= df);
+            directorQuery = directorQuery.Where(r => r.ReportDate >= df);
+        }
+
+        if (!string.IsNullOrWhiteSpace(dateTo) && DateOnly.TryParse(dateTo, out var dt))
+        {
+            dailyQuery = dailyQuery.Where(r => r.ReportDate <= dt);
+            directorQuery = directorQuery.Where(r => r.ReportDate <= dt);
+        }
+
+        if (filterUserId.HasValue)
+        {
+            dailyQuery = dailyQuery.Where(r => r.UserId == filterUserId.Value);
+            directorQuery = directorQuery.Where(r => r.UserId == filterUserId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLower();
+            dailyQuery = dailyQuery.Where(r =>
+                r.TaskDescription.ToLower().Contains(s) ||
+                r.Issue.ToLower().Contains(s) ||
+                r.Solution.ToLower().Contains(s));
+            directorQuery = directorQuery.Where(r =>
+                r.TaskDescription.ToLower().Contains(s) ||
+                r.Issue.ToLower().Contains(s) ||
+                r.Solution.ToLower().Contains(s));
+        }
+
+        var totalCount = await dailyQuery.CountAsync(ct) + await directorQuery.CountAsync(ct);
+        var takePerSource = page * pageSize;
+
+        var dailyItems = await dailyQuery
+            .OrderByDescending(x => x.ReportDate)
+            .ThenByDescending(x => x.Id)
+            .Take(takePerSource)
+            .ToListAsync(ct);
+
+        var directorItems = await directorQuery
+            .OrderByDescending(x => x.ReportDate)
+            .ThenByDescending(x => x.Id)
+            .Take(takePerSource)
+            .ToListAsync(ct);
+
+        var dailyUserIds = dailyItems.Select(r => r.UserId).Distinct().ToList();
+        var directorUserIds = directorItems.Select(r => r.UserId).Distinct().ToList();
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(u => dailyUserIds.Contains(u.Id))
+            .Include(u => u.RoleRef)
+            .ToListAsync(ct);
+        var directorUsers = await _db.DirectorUsers.AsNoTracking()
+            .Where(u => directorUserIds.Contains(u.Id))
+            .ToListAsync(ct);
+        var departments = await _db.Departments.AsNoTracking().ToListAsync(ct);
+        var companies = await _db.Companies.AsNoTracking().ToListAsync(ct);
+
+        var dailyResponses = dailyItems.Select(r =>
+        {
+            var resp = r.ToResponse();
+            var u = users.FirstOrDefault(x => x.Id == r.UserId);
+            if (u != null)
+            {
+                resp.UserFullName = u.FullName;
+                resp.UserEmail = u.Email;
+                resp.UserPosition = u.Position;
+                resp.DepartmentName = departments.FirstOrDefault(d => d.Id == u.DepartmentId)?.DepartmentName;
+                resp.CompanyName = companies.FirstOrDefault(c => c.Id == u.CompanyId)?.CompanyName;
+                resp.DepartmentId = u.DepartmentId;
+                resp.CompanyId = u.CompanyId;
+            }
+            return resp;
+        });
+
+        var directorResponses = directorItems.Select(r =>
+        {
+            var resp = r.ToResponse();
+            var u = directorUsers.FirstOrDefault(x => x.Id == r.UserId);
+            if (u != null)
+            {
+                resp.UserFullName = u.FullName;
+                resp.UserEmail = u.Email;
+                resp.UserPosition = "Director";
+                resp.CompanyName = companies.FirstOrDefault(c => c.Id == u.CompanyId)?.CompanyName;
+                resp.CompanyId = u.CompanyId;
+                resp.UserRoleName = "director";
+            }
+            return resp;
+        });
+
+        var items = dailyResponses
+            .Concat(directorResponses)
+            .OrderByDescending(x => x.ReportDate)
+            .ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new ListReportsResponse
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Items = items
+        };
     }
 }

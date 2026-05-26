@@ -7,7 +7,8 @@ namespace API.Auth;
 public enum AuthAccountType
 {
     User,
-    DirectorUser
+    DirectorUser,
+    Client
 }
 
 public sealed record AuthenticatedUser(

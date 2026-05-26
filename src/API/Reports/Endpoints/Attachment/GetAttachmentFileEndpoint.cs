@@ -1,3 +1,4 @@
+using API.Auth;
 using FastEndpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
@@ -29,6 +30,8 @@ public class GetAttachmentFileEndpoint : EndpointWithoutRequest
 
     public override async Task HandleAsync(CancellationToken ct)
     {
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, OAuthScopes.ReportsRead)) return;
+
         var reportId = Route<int>("reportId");
         var attachmentId = Route<int>("attachmentId");
 

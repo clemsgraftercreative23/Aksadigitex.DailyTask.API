@@ -1,3 +1,4 @@
+using API.Auth;
 using API.Users;
 using Domain;
 using FastEndpoints;
@@ -32,6 +33,8 @@ public class DetailReportEndpoint : EndpointWithoutRequest<DetailReportResponse>
 
     public override async Task HandleAsync(CancellationToken ct)
     {
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, OAuthScopes.ReportsRead)) return;
+
         var reportId = Route<int>("id");
         var accountType = User.GetAccountType();
 

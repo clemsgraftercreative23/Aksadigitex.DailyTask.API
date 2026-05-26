@@ -38,6 +38,7 @@ public class UrgentReportsEndpoint : RoleAuthorizedEndpointWithoutRequest<Urgent
     public UrgentReportsEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() =>
         new[] { UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.ReportsRead };
 
     public override void Configure()
     {

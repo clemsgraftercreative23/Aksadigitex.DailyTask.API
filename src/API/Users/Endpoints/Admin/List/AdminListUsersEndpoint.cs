@@ -31,6 +31,8 @@ public class AdminListUsersEndpoint : RoleAuthorizedEndpointWithoutRequest<Admin
     protected override UserRole[] GetAllowedRoles() =>
         new[] { UserRole.SuperDuperAdmin };
 
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.UsersRead };
+
     public override async Task HandleAsync(CancellationToken ct)
     {
         if (!await ValidateRoleAsync(ct))

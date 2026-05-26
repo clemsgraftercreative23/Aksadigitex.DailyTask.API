@@ -44,6 +44,8 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
 
     public DashboardEndpoint(AppDbContext db) => _db = db;
 
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.DashboardRead };
+
     public override void Configure()
     {
         Get("v1/dashboard");
@@ -54,6 +56,12 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
     public override async Task HandleAsync(CancellationToken ct)
     {
         if (!await ValidateRoleAsync(ct)) return;
+
+        if (User.IsClientCredentials())
+        {
+            await SendAsync(await BuildClientDashboardAsync(ct), cancellation: ct);
+            return;
+        }
 
         var userId = UserClaims.GetUserId(User);
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
@@ -197,5 +205,64 @@ public class DashboardEndpoint : RoleAuthorizedEndpointWithoutRequest<DashboardR
             RejectedCount = rejected,
             Date = todayStr,
         }, cancellation: ct);
+    }
+
+    private async Task<DashboardResponse> BuildClientDashboardAsync(CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var todayStr = today.ToString("yyyy-MM-dd");
+
+        var regularReportQuery = _db.DailyReports.AsNoTracking();
+        var directorReportQuery = _db.DirectorReports.AsNoTracking();
+        var userQuery = _db.Users.AsNoTracking().Where(u => u.IsActive);
+        var directorUserQuery = _db.DirectorUsers.AsNoTracking().Where(u => u.IsActive);
+
+        var regularStatusCounts = await regularReportQuery
+            .GroupBy(r => r.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var directorStatusCounts = await directorReportQuery
+            .GroupBy(r => r.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var todayReporterIds = await regularReportQuery
+            .Where(r => r.ReportDate == today)
+            .Select(r => r.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var todayDirectorReporterIds = await directorReportQuery
+            .Where(r => r.ReportDate == today)
+            .Select(r => r.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var regularNotReported = await userQuery
+            .Where(u => u.RoleId <= (int)UserRole.AdminDivisi && !todayReporterIds.Contains(u.Id))
+            .CountAsync(ct);
+
+        var directorNotReported = await directorUserQuery
+            .Where(u => u.RoleId <= (int)UserRole.AdminDivisi && !todayDirectorReporterIds.Contains(u.Id))
+            .CountAsync(ct);
+
+        int StatusCount(string status) =>
+            regularStatusCounts.Where(s => s.Status == status).Sum(s => s.Count) +
+            directorStatusCounts.Where(s => s.Status == status).Sum(s => s.Count);
+
+        return new DashboardResponse
+        {
+            TotalReports = await regularReportQuery.CountAsync(ct) + await directorReportQuery.CountAsync(ct),
+            TodayReports = await regularReportQuery.CountAsync(r => r.ReportDate == today, ct) +
+                           await directorReportQuery.CountAsync(r => r.ReportDate == today, ct),
+            NotReportedCount = regularNotReported + directorNotReported,
+            TotalEmployees = await userQuery.CountAsync(ct) + await directorUserQuery.CountAsync(ct),
+            DraftCount = StatusCount("draft"),
+            SubmittedCount = StatusCount("submitted"),
+            ApprovedCount = StatusCount("approved"),
+            RejectedCount = StatusCount("rejected"),
+            Date = todayStr,
+        };
     }
 }

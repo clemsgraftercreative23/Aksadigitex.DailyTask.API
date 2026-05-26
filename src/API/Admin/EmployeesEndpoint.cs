@@ -40,6 +40,7 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
     public EmployeesEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() =>
         new[] { UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.EmployeesRead };
 
     public override void Configure()
     {
@@ -51,6 +52,12 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
     public override async Task HandleAsync(CancellationToken ct)
     {
         if (!await ValidateRoleAsync(ct)) return;
+
+        if (User.IsClientCredentials())
+        {
+            await SendAsync(await BuildEmployeesResponseAsync(null, null, null, includeDirectorUsers: true, ct), cancellation: ct);
+            return;
+        }
 
         var userId = UserClaims.GetUserId(User);
         if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
@@ -77,6 +84,16 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
             currentCompanyId = directorUser.CompanyId;
         }
 
+        await SendAsync(await BuildEmployeesResponseAsync(role, currentDepartmentId, currentCompanyId, includeDirectorUsers: false, ct), cancellation: ct);
+    }
+
+    private async Task<EmployeesResponse> BuildEmployeesResponseAsync(
+        UserRole? role,
+        int? currentDepartmentId,
+        int? currentCompanyId,
+        bool includeDirectorUsers,
+        CancellationToken ct)
+    {
         var search = Query<string?>("search", isRequired: false);
         var deptId = Query<int?>("departmentId", isRequired: false);
 
@@ -110,6 +127,31 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
             IsActive = u.IsActive,
         }).ToList();
 
+        if (includeDirectorUsers)
+        {
+            var directorUsers = await _db.DirectorUsers
+                .AsNoTracking()
+                .Where(u => u.IsActive)
+                .OrderBy(u => u.FullName)
+                .ToListAsync(ct);
+
+            var roleNames = await _db.Roles
+                .AsNoTracking()
+                .ToDictionaryAsync(x => x.Id, x => x.RoleName, ct);
+
+            employees.AddRange(directorUsers.Select(u => new EmployeeItemResponse
+            {
+                Id = u.Id,
+                FullName = u.FullName,
+                Email = u.Email,
+                RoleName = roleNames.TryGetValue(u.RoleId, out var roleName) ? roleName : u.Role.ToString(),
+                DepartmentName = null,
+                CompanyName = companies.FirstOrDefault(c => c.Id == u.CompanyId)?.CompanyName,
+                Position = "Director",
+                IsActive = u.IsActive,
+            }));
+        }
+
         var deptStats = departments
             .Select(d => new DeptStatWithCount
             {
@@ -120,10 +162,10 @@ public class EmployeesEndpoint : RoleAuthorizedEndpointWithoutRequest<EmployeesR
             .Where(d => d.EmployeeCount > 0)
             .ToList();
 
-        await SendAsync(new EmployeesResponse
+        return new EmployeesResponse
         {
             Employees = employees,
             DeptStats = deptStats,
-        }, cancellation: ct);
+        };
     }
 }

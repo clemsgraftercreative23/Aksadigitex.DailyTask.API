@@ -29,6 +29,7 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
     public ActivityLogEndpoint(AppDbContext db) => _db = db;
     protected override UserRole[]? GetAllowedRoles() =>
         new[] { UserRole.AdminDivisi, UserRole.SuperAdmin, UserRole.SuperDuperAdmin };
+    protected override string[] GetAllowedOAuthScopes() => new[] { OAuthScopes.ActivityLogRead };
 
     public override void Configure()
     {
@@ -39,39 +40,51 @@ public class ActivityLogEndpoint : RoleAuthorizedEndpointWithoutRequest<Activity
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var userId = User.GetUserId();
-        if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
-
-        var currentUser = await _db.Users.AsNoTracking()
-            .Include(u => u.RoleRef)
-            .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+        if (!await ValidateRoleAsync(ct)) return;
 
         string roleName;
         UserRole roleEnum;
         int? currentDepartmentId;
         int? currentCompanyId;
 
-        if (currentUser is not null)
+        if (User.IsClientCredentials())
         {
-            roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
-            roleEnum = currentUser.Role;
-            currentDepartmentId = currentUser.DepartmentId;
-            currentCompanyId = currentUser.CompanyId;
+            roleName = "super_duper_admin";
+            roleEnum = UserRole.SuperDuperAdmin;
+            currentDepartmentId = null;
+            currentCompanyId = null;
         }
         else
         {
-            var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-            if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+            var userId = User.GetUserId();
+            if (!userId.HasValue) { await SendUnauthorizedAsync(ct); return; }
 
-            // Resolve role name from Roles table for director user
-            roleName = await _db.Roles.AsNoTracking()
-                .Where(r => r.Id == directorUser.RoleId)
-                .Select(r => r.RoleName)
-                .FirstOrDefaultAsync(ct) ?? "";
-            roleName = roleName.Trim().ToLowerInvariant();
-            roleEnum = directorUser.Role;
-            currentDepartmentId = null;
-            currentCompanyId = directorUser.CompanyId;
+            var currentUser = await _db.Users.AsNoTracking()
+                .Include(u => u.RoleRef)
+                .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+
+            if (currentUser is not null)
+            {
+                roleName = currentUser.RoleRef?.RoleName?.Trim().ToLowerInvariant() ?? "";
+                roleEnum = currentUser.Role;
+                currentDepartmentId = currentUser.DepartmentId;
+                currentCompanyId = currentUser.CompanyId;
+            }
+            else
+            {
+                var directorUser = await _db.DirectorUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+                if (directorUser is null) { await SendUnauthorizedAsync(ct); return; }
+
+                // Resolve role name from Roles table for director user
+                roleName = await _db.Roles.AsNoTracking()
+                    .Where(r => r.Id == directorUser.RoleId)
+                    .Select(r => r.RoleName)
+                    .FirstOrDefaultAsync(ct) ?? "";
+                roleName = roleName.Trim().ToLowerInvariant();
+                roleEnum = directorUser.Role;
+                currentDepartmentId = null;
+                currentCompanyId = directorUser.CompanyId;
+            }
         }
 
         // Authorize using role_name from DB (handles role_id/enum mismatch)

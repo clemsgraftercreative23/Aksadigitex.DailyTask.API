@@ -1,3 +1,4 @@
+using API.Auth;
 using FastEndpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -28,6 +29,8 @@ public class ListUsersEndpoint : EndpointWithoutRequest<ListUsersResponse>
 
     public override async Task HandleAsync(CancellationToken ct)
     {
+        if (!await User.ValidateClientScopeAsync(HttpContext, ct, OAuthScopes.UsersRead)) return;
+
         var items = await _db.Users
             .AsNoTracking()
             .OrderBy(x => x.Id)
